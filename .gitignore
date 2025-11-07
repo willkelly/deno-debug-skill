@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Investigation artifacts
+data/
+output/
+*.heapsnapshot
+*.cpuprofile
+investigation_*.org
+investigation_*.json
+breadcrumbs_*.json
+
+# Temporary files
+*.log
+*.tmp
+.DS_Store
+*~
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Jupyter
+.ipynb_checkpoints/
