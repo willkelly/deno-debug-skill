@@ -21,3 +21,7 @@ python-dateutil>=2.8.0
 
 # Optional but recommended for better performance
 pyarrow>=14.0.0
+
+# Testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0

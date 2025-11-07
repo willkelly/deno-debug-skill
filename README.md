@@ -423,14 +423,56 @@ This skill is designed to be extended:
 - Add debugging patterns to `SKILL.md`
 - Improve report templates
 
+## 🧪 Testing
+
+This skill includes comprehensive testing:
+
+### Quick Test
+
+```bash
+# Run all tests
+./run_tests.sh
+```
+
+### Unit Tests
+
+```bash
+# Test parsers, breadcrumbs, etc. (no Deno required)
+pytest tests/ -v
+```
+
+### Integration Tests
+
+```bash
+# Test against real Deno instance
+python validate.py
+```
+
+**What gets tested:**
+- ✅ CDP connection to Deno
+- ✅ Breakpoint setting
+- ✅ Heap snapshot capture and parsing
+- ✅ CPU profiling
+- ✅ All analysis functions
+- ✅ Visualization generation
+- ✅ Org report generation
+
+**CI/CD:**
+- Automated tests on every push
+- Tested against Python 3.9, 3.10, 3.11
+- Tested against Deno 1.40.x, 1.41.x, 1.42.x
+
+See [TESTING.md](TESTING.md) for details.
+
 ## 📄 License
 
 MIT License - use freely for your debugging needs!
 
 ## 🎯 Next Steps
 
-1. Install dependencies: `pip install -r requirements.txt`
-2. Launch Deno app with `--inspect`
-3. Ask Claude to debug!
+1. **Install dependencies:** `pip install -r requirements.txt`
+2. **Run tests:** `./run_tests.sh` (validates everything works)
+3. **Launch Deno app:** `deno run --inspect your-app.ts`
+4. **Ask Claude to debug!**
 
 **Happy Debugging! 🐛🔍**
