@@ -3,19 +3,20 @@ Simple heap snapshot test to isolate the chunk capture issue.
 Uses --inspect (not --inspect-brk) to avoid breakpoint complications.
 """
 
-import pytest
 import asyncio
 import json
 import subprocess
 from pathlib import Path
+
+import pytest
 
 pytestmark = pytest.mark.asyncio
 
 
 async def test_deno_heap_snapshot_basic():
     """Test heap snapshot with Deno using raw WebSocket - no breakpoints."""
-    import websockets
     import aiohttp
+    import websockets
 
     # Create simple Deno script (no blocking)
     test_script = """
@@ -38,7 +39,7 @@ async def test_deno_heap_snapshot_basic():
     proc = subprocess.Popen(
         ["deno", "run", "--inspect=127.0.0.1:9232", str(script_path)],
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE
+        stderr=subprocess.PIPE,
     )
 
     try:
@@ -47,9 +48,9 @@ async def test_deno_heap_snapshot_basic():
 
         # Get WebSocket URL
         async with aiohttp.ClientSession() as session:
-            async with session.get('http://127.0.0.1:9232/json') as resp:
+            async with session.get("http://127.0.0.1:9232/json") as resp:
                 targets = await resp.json()
-                ws_url = targets[0]['webSocketDebuggerUrl']
+                ws_url = targets[0]["webSocketDebuggerUrl"]
 
         print(f"\nConnecting to: {ws_url}")
         ws = await websockets.connect(ws_url)
@@ -65,25 +66,29 @@ async def test_deno_heap_snapshot_basic():
                     data = json.loads(message)
                     all_messages.append(data)
 
-                    if 'method' in data:
-                        method = data['method']
+                    if "method" in data:
+                        method = data["method"]
 
-                        if method == 'HeapProfiler.addHeapSnapshotChunk':
-                            chunk = data.get('params', {}).get('chunk', '')
+                        if method == "HeapProfiler.addHeapSnapshotChunk":
+                            chunk = data.get("params", {}).get("chunk", "")
                             chunks_received.append(chunk)
                             print(f"  ✓ Chunk received: {len(chunk)} bytes")
 
-                        elif method == 'HeapProfiler.reportHeapSnapshotProgress':
-                            params = data.get('params', {})
+                        elif method == "HeapProfiler.reportHeapSnapshotProgress":
+                            params = data.get("params", {})
                             progress_received.append(params)
-                            print(f"  Progress: {params.get('done', 0)}/{params.get('total', 0)}")
+                            print(
+                                f"  Progress: {params.get('done', 0)}/{params.get('total', 0)}"
+                            )
 
-                    elif 'id' in data and data.get('id') == msg_id:
+                    elif "id" in data and data.get("id") == msg_id:
                         # Response to takeHeapSnapshot
-                        if 'error' in data:
+                        if "error" in data:
                             print(f"  ✗ HeapSnapshot command error: {data['error']}")
                         else:
-                            print(f"  ✓ HeapSnapshot command response: {data.get('result', {})}")
+                            print(
+                                f"  ✓ HeapSnapshot command response: {data.get('result', {})}"
+                            )
 
             except websockets.exceptions.ConnectionClosed:
                 pass
@@ -91,17 +96,21 @@ async def test_deno_heap_snapshot_basic():
         monitor_task = asyncio.create_task(monitor())
 
         # Enable HeapProfiler
-        await ws.send(json.dumps({'id': msg_id, 'method': 'HeapProfiler.enable'}))
+        await ws.send(json.dumps({"id": msg_id, "method": "HeapProfiler.enable"}))
         msg_id += 1
         await asyncio.sleep(0.5)
 
         print("\nRequesting heap snapshot with progress reporting...")
         snapshot_cmd_id = msg_id
-        await ws.send(json.dumps({
-            'id': snapshot_cmd_id,
-            'method': 'HeapProfiler.takeHeapSnapshot',
-            'params': {'reportProgress': True}
-        }))
+        await ws.send(
+            json.dumps(
+                {
+                    "id": snapshot_cmd_id,
+                    "method": "HeapProfiler.takeHeapSnapshot",
+                    "params": {"reportProgress": True},
+                }
+            )
+        )
         msg_id += 1
 
         # Wait for completion
@@ -110,9 +119,9 @@ async def test_deno_heap_snapshot_basic():
         await ws.close()
         monitor_task.cancel()
 
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("RESULTS")
-        print("="*70)
+        print("=" * 70)
         print(f"Total messages received: {len(all_messages)}")
         print(f"Chunks received: {len(chunks_received)}")
         print(f"Progress events: {len(progress_received)}")
@@ -130,7 +139,11 @@ async def test_deno_heap_snapshot_basic():
             print("⚠️  No progress events received")
 
         # Check for HeapProfiler messages at all
-        heap_messages = [m for m in all_messages if 'method' in m and 'HeapProfiler' in m.get('method', '')]
+        heap_messages = [
+            m
+            for m in all_messages
+            if "method" in m and "HeapProfiler" in m.get("method", "")
+        ]
         print(f"\nAll HeapProfiler events: {[m['method'] for m in heap_messages]}")
 
         if len(chunks_received) == 0:
@@ -143,11 +156,12 @@ async def test_deno_heap_snapshot_basic():
 
 async def test_node_heap_snapshot_basic():
     """Test heap snapshot with Node.js for comparison."""
-    import websockets
-    import aiohttp
     import shutil
 
-    if not shutil.which('node'):
+    import aiohttp
+    import websockets
+
+    if not shutil.which("node"):
         pytest.skip("Node.js not available")
 
     # Create Node script
@@ -166,16 +180,16 @@ async def test_node_heap_snapshot_basic():
     proc = subprocess.Popen(
         ["node", "--inspect=127.0.0.1:9233", str(script_path)],
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE
+        stderr=subprocess.PIPE,
     )
 
     try:
         await asyncio.sleep(2)
 
         async with aiohttp.ClientSession() as session:
-            async with session.get('http://127.0.0.1:9233/json') as resp:
+            async with session.get("http://127.0.0.1:9233/json") as resp:
                 targets = await resp.json()
-                ws_url = targets[0]['webSocketDebuggerUrl']
+                ws_url = targets[0]["webSocketDebuggerUrl"]
 
         print(f"\nConnecting to Node: {ws_url}")
         ws = await websockets.connect(ws_url)
@@ -189,19 +203,19 @@ async def test_node_heap_snapshot_basic():
                 async for message in ws:
                     data = json.loads(message)
 
-                    if 'method' in data:
-                        method = data['method']
+                    if "method" in data:
+                        method = data["method"]
 
-                        if method == 'HeapProfiler.addHeapSnapshotChunk':
-                            chunk = data.get('params', {}).get('chunk', '')
+                        if method == "HeapProfiler.addHeapSnapshotChunk":
+                            chunk = data.get("params", {}).get("chunk", "")
                             chunks_received.append(chunk)
                             if len(chunks_received) % 100 == 0:
                                 print(f"  Node chunks: {len(chunks_received)}")
 
-                        elif method == 'HeapProfiler.reportHeapSnapshotProgress':
-                            params = data.get('params', {})
+                        elif method == "HeapProfiler.reportHeapSnapshotProgress":
+                            params = data.get("params", {})
                             progress_received.append(params)
-                            if params.get('finished'):
+                            if params.get("finished"):
                                 print(f"  Node: Snapshot finished!")
 
             except websockets.exceptions.ConnectionClosed:
@@ -210,16 +224,20 @@ async def test_node_heap_snapshot_basic():
         monitor_task = asyncio.create_task(monitor())
 
         # Enable HeapProfiler
-        await ws.send(json.dumps({'id': msg_id, 'method': 'HeapProfiler.enable'}))
+        await ws.send(json.dumps({"id": msg_id, "method": "HeapProfiler.enable"}))
         msg_id += 1
         await asyncio.sleep(0.5)
 
         print("Requesting heap snapshot from Node...")
-        await ws.send(json.dumps({
-            'id': msg_id,
-            'method': 'HeapProfiler.takeHeapSnapshot',
-            'params': {'reportProgress': True}
-        }))
+        await ws.send(
+            json.dumps(
+                {
+                    "id": msg_id,
+                    "method": "HeapProfiler.takeHeapSnapshot",
+                    "params": {"reportProgress": True},
+                }
+            )
+        )
         msg_id += 1
 
         await asyncio.sleep(15)
@@ -227,9 +245,9 @@ async def test_node_heap_snapshot_basic():
         await ws.close()
         monitor_task.cancel()
 
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("NODE.JS RESULTS")
-        print("="*70)
+        print("=" * 70)
         print(f"Chunks received: {len(chunks_received)}")
         print(f"Progress events: {len(progress_received)}")
 
@@ -247,6 +265,6 @@ async def test_node_heap_snapshot_basic():
         proc.wait()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     print("Simple heap snapshot tests")
     print("Run: python -m pytest tests/test_heap_simple.py -v -s")

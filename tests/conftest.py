@@ -2,12 +2,13 @@
 Pytest configuration and shared fixtures.
 """
 
-import pytest
 import sys
 from pathlib import Path
 
+import pytest
+
 # Add scripts to path (from skill directory)
-scripts_path = Path(__file__).parent.parent / 'skill' / 'scripts'
+scripts_path = Path(__file__).parent.parent / "skill" / "scripts"
 sys.path.insert(0, str(scripts_path))
 
 
@@ -17,29 +18,67 @@ def sample_heap_data():
     return {
         "snapshot": {
             "meta": {
-                "node_fields": ["type", "name", "id", "self_size", "edge_count", "trace_node_id"],
+                "node_fields": [
+                    "type",
+                    "name",
+                    "id",
+                    "self_size",
+                    "edge_count",
+                    "trace_node_id",
+                ],
                 "node_types": [
-                    ["hidden", "array", "string", "object", "code", "closure", "regexp", "number", "native", "synthetic"],
-                    []
+                    [
+                        "hidden",
+                        "array",
+                        "string",
+                        "object",
+                        "code",
+                        "closure",
+                        "regexp",
+                        "number",
+                        "native",
+                        "synthetic",
+                    ],
+                    [],
                 ],
                 "edge_fields": ["type", "name_or_index", "to_node"],
                 "edge_types": [
-                    ["context", "element", "property", "internal", "hidden", "shortcut", "weak"],
-                    []
-                ]
+                    [
+                        "context",
+                        "element",
+                        "property",
+                        "internal",
+                        "hidden",
+                        "shortcut",
+                        "weak",
+                    ],
+                    [],
+                ],
             }
         },
         "nodes": [
             # Node: type=9(synthetic), name=0, id=1, self_size=0, edge_count=1, trace_node_id=0
-            9, 0, 1, 0, 1, 0,
+            9,
+            0,
+            1,
+            0,
+            1,
+            0,
             # Node: type=3(object), name=1, id=2, self_size=100, edge_count=0, trace_node_id=0
-            3, 1, 2, 100, 0, 0,
+            3,
+            1,
+            2,
+            100,
+            0,
+            0,
         ],
         "edges": [
             # Edge: type=2(property), name_or_index=2, to_node=6
-            2, 2, 6
+            2,
+            2,
+            6,
         ],
-        "strings": ["(GC roots)", "Object", "myProperty"]
+        "strings": ["(GC roots)", "Object", "myProperty"],
     }
 
 
@@ -57,10 +96,10 @@ def sample_cpu_profile():
                     "scriptId": "0",
                     "url": "",
                     "lineNumber": -1,
-                    "columnNumber": -1
+                    "columnNumber": -1,
                 },
                 "hitCount": 5,
-                "children": [2, 3]
+                "children": [2, 3],
             },
             {
                 "id": 2,
@@ -69,10 +108,10 @@ def sample_cpu_profile():
                     "scriptId": "1",
                     "url": "file:///app.ts",
                     "lineNumber": 10,
-                    "columnNumber": 0
+                    "columnNumber": 0,
                 },
                 "hitCount": 50,
-                "children": []
+                "children": [],
             },
             {
                 "id": 3,
@@ -81,12 +120,12 @@ def sample_cpu_profile():
                     "scriptId": "1",
                     "url": "file:///app.ts",
                     "lineNumber": 20,
-                    "columnNumber": 0
+                    "columnNumber": 0,
                 },
                 "hitCount": 10,
-                "children": []
-            }
+                "children": [],
+            },
         ],
         "samples": [1, 2, 2, 2, 2, 2, 3, 3, 1, 1],  # Total 10 samples
-        "timeDeltas": [100] * 10
+        "timeDeltas": [100] * 10,
     }

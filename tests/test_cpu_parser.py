@@ -2,7 +2,6 @@
 Tests for CPU profile parsing and analysis.
 """
 
-import pytest
 import pandas as pd
 from cpu_profiler import CPUProfile, analyze_hot_paths, detect_async_issues
 
@@ -23,15 +22,15 @@ def test_profile_nodes(sample_cpu_profile):
 
     # Check root node
     root = profile.nodes[0]
-    assert root.function_name == '(root)'
+    assert root.function_name == "(root)"
     assert root.hit_count == 5
     assert len(root.children) == 2
 
     # Check child nodes
     slow = profile.nodes[1]
-    assert slow.function_name == 'slowFunction'
+    assert slow.function_name == "slowFunction"
     assert slow.hit_count == 50
-    assert slow.url == 'file:///app.ts'
+    assert slow.url == "file:///app.ts"
     assert slow.line_number == 10
 
 
@@ -46,13 +45,13 @@ def test_get_hot_functions(sample_cpu_profile):
 
     # slowFunction should have highest self_samples (50)
     # Note: total_samples sorting puts root first, so check by filtering
-    slow_row = hot[hot['function_name'] == 'slowFunction']
+    slow_row = hot[hot["function_name"] == "slowFunction"]
     assert len(slow_row) > 0
-    assert slow_row.iloc[0]['self_samples'] == 50
+    assert slow_row.iloc[0]["self_samples"] == 50
 
     # Should have percentage columns
-    assert 'self_pct' in hot.columns
-    assert 'total_pct' in hot.columns
+    assert "self_pct" in hot.columns
+    assert "total_pct" in hot.columns
 
 
 def test_sample_counting(sample_cpu_profile):
@@ -72,13 +71,13 @@ def test_timing_summary(sample_cpu_profile):
 
     summary = profile.get_timing_summary()
 
-    assert 'total_time_ms' in summary
-    assert 'total_time_s' in summary
-    assert 'sample_count' in summary
-    assert 'sample_rate_hz' in summary
+    assert "total_time_ms" in summary
+    assert "total_time_s" in summary
+    assert "sample_count" in summary
+    assert "sample_rate_hz" in summary
 
-    assert summary['total_time_ms'] == 1000  # 1 second
-    assert summary['sample_count'] == 10
+    assert summary["total_time_ms"] == 1000  # 1 second
+    assert summary["sample_count"] == 10
 
 
 def test_call_tree_structure(sample_cpu_profile):
@@ -105,9 +104,9 @@ def test_get_call_tree(sample_cpu_profile):
 
     # Root node should have children
     root = tree[0]
-    assert 'function' in root
-    assert 'children' in root
-    assert len(root['children']) == 2  # slowFunction and fastFunction
+    assert "function" in root
+    assert "children" in root
+    assert len(root["children"]) == 2  # slowFunction and fastFunction
 
 
 def test_analyze_hot_paths(sample_cpu_profile):
@@ -119,7 +118,7 @@ def test_analyze_hot_paths(sample_cpu_profile):
     assert isinstance(hot_paths, pd.DataFrame)
     # slowFunction should be in hot paths (50% of samples)
     assert not hot_paths.empty
-    slow_rows = hot_paths[hot_paths['function'] == 'slowFunction']
+    slow_rows = hot_paths[hot_paths["function"] == "slowFunction"]
     assert len(slow_rows) > 0
 
 
@@ -130,17 +129,17 @@ def test_detect_async_issues(sample_cpu_profile):
     analysis = detect_async_issues(profile)
 
     assert isinstance(analysis, dict)
-    assert 'promise_related_pct' in analysis
-    assert 'await_related_pct' in analysis
-    assert 'callback_related_pct' in analysis
-    assert 'analysis' in analysis
+    assert "promise_related_pct" in analysis
+    assert "await_related_pct" in analysis
+    assert "callback_related_pct" in analysis
+    assert "analysis" in analysis
 
 
 def test_optimization_issues(sample_cpu_profile):
     """Test detection of optimization issues."""
     # Add a node with deopt reason
     profile_data = sample_cpu_profile.copy()
-    profile_data['nodes'][1]['deoptReason'] = 'Insufficient type feedback'
+    profile_data["nodes"][1]["deoptReason"] = "Insufficient type feedback"
 
     profile = CPUProfile(profile_data)
 
@@ -149,7 +148,7 @@ def test_optimization_issues(sample_cpu_profile):
     assert isinstance(issues, pd.DataFrame)
     if not issues.empty:
         # Should have the slowFunction with deopt issue
-        assert 'slowFunction' in issues['function_name'].values
+        assert "slowFunction" in issues["function_name"].values
 
 
 def test_inclusive_samples_calculation(sample_cpu_profile):
