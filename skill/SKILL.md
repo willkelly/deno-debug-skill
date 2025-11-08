@@ -30,6 +30,20 @@ Your job is to **use these scripts** to investigate, not rewrite them.
 
 ## Breadcrumb Usage Guidelines
 
+**Purpose of Breadcrumbs:**
+
+Breadcrumbs create a timeline of your investigative *reasoning*, not just your actions. They answer:
+- "What did I think was wrong, and why?"
+- "What evidence changed my thinking?"
+- "Why did I focus on X instead of Y?"
+- "How did I arrive at this conclusion?"
+
+This is valuable because:
+1. **Review and learning** - Later, you or others can understand the investigation process
+2. **Debugging the debugging** - If the conclusion was wrong, see where reasoning went off track
+3. **Knowledge transfer** - Team members can learn investigation techniques
+4. **Complex investigations** - When exploring multiple hypotheses, breadcrumbs prevent getting lost
+
 **Use breadcrumbs to track your investigation state, NOT as a log of every action.**
 
 Use breadcrumbs for:
