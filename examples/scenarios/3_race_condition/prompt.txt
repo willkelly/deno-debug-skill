@@ -1,11 +1,11 @@
-My Deno app has async operations that sometimes complete in the wrong order, causing inconsistent behavior.
-
-Can you investigate the race conditions?
+I'm having weird intermittent issues with my order processing system. Sometimes orders don't get saved at all, and other times when I update an order status, the update seems to get lost. It's not consistent - sometimes it works fine, other times it fails.
 
 The app is running on http://localhost:8002 with these endpoints:
-- POST /order        (creates orders but they don't save properly)
-- POST /update       (concurrent updates cause data loss)
-- POST /batch        (processes in unpredictable order)
-- GET  /orders       (view current state)
+  POST /order         - Creates orders (but they don't always save properly)
+  POST /update        - Updates order status (concurrent updates cause data loss)
+  POST /batch         - Processes multiple orders (unpredictable order)
+  GET  /orders        - View current state
 
-I've started it with --inspect on port 9229.
+I suspect it's some kind of race condition with the async operations, but I can't reproduce it reliably. Can you investigate what's going wrong with the async flow?
+
+(I've started the app with --inspect on port 9229)

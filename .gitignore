@@ -19,6 +19,7 @@ output/
 investigation_*.org
 investigation_*.json
 breadcrumbs_*.json
+investigation_output/
 
 # Scenario outputs (from examples/scenarios/*/run.sh)
 examples/scenarios/*/output/

@@ -4,10 +4,53 @@ This is the actual Claude skill that gets installed. Everything here is what use
 
 ## Installation
 
+### 1. Install the skill
+
 ```bash
-# Install Python dependencies
+# Copy to Claude skills directory
+cp -r . ~/.claude/skills/deno-debugger/
+```
+
+### 2. Install Python dependencies
+
+```bash
+cd ~/.claude/skills/deno-debugger/
 pip install -r requirements.txt
 ```
+
+## Quick Start
+
+### 1. Start your Deno app with inspector
+
+```bash
+deno run --inspect=127.0.0.1:9229 --allow-net your-app.ts
+```
+
+### 2. Ask Claude to investigate
+
+```
+"My Deno app has a memory leak. Can you investigate?"
+```
+
+Claude will:
+- Load this skill automatically
+- Connect to the Deno inspector
+- Conduct a systematic investigation
+- Generate a complete report
+
+## Testing the Skill
+
+To verify the skill works, use one of the example scenarios in the parent directory:
+
+```bash
+# Run the memory leak scenario
+cd ../examples/scenarios/1_memory_leak/
+./run.sh
+
+# Copy the prompt shown and paste it to Claude
+```
+
+See `../examples/scenarios/README.md` for all available test scenarios.
 
 ## Usage
 

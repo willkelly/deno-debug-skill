@@ -110,11 +110,10 @@ Each investigation creates artifacts in `data/scenarios/<scenario>_<timestamp>/`
 data/scenarios/memory_leak_20251108_123456/
 ├── app.log                      # Deno app output
 ├── investigation.json           # Breadcrumb timeline
-├── investigation_report.org     # Full Org mode report
+├── investigation_report.org     # Full Org mode report (or REPORT.md)
 ├── baseline.heapsnapshot        # Before state (memory leak)
 ├── after_leak.heapsnapshot      # After state (memory leak)
-├── profile.cpuprofile           # CPU profile (performance)
-└── flamegraph.svg               # Visualization (performance)
+└── profile.cpuprofile           # CPU profile (performance)
 ```
 
 ## 🔍 Expected Claude Behavior
