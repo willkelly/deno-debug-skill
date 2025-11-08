@@ -102,23 +102,36 @@ async def test_breakpoint_operations(deno_process):
 
 @pytest.mark.asyncio
 @pytest.mark.timeout(30)
-async def test_heap_snapshot_basic(deno_process):
-    """Test basic heap snapshot capture (without full parsing)."""
+async def test_heap_snapshot_capture(deno_process):
+    """
+    Test heap snapshot capture from Deno.
+
+    Verifies that:
+    - Snapshot data is received (non-zero bytes)
+    - Data is valid JSON
+    - Contains V8 heap snapshot structure
+    - Size is reasonable (at least 1MB for Deno runtime)
+    """
     client = CDPClient("127.0.0.1", 9229)
     await client.connect()
 
-    # Try to capture snapshot
+    # Capture snapshot
     snapshot_json = await client.take_heap_snapshot(report_progress=False)
 
-    # Should get some data
-    assert snapshot_json is not None
+    # Verify we got data
+    assert snapshot_json is not None, "Snapshot should not be None"
     assert len(snapshot_json) > 0, "Snapshot should not be empty"
+    assert len(snapshot_json) > 1_000_000, "Snapshot should be at least 1MB"
 
-    # Should be valid JSON
+    # Verify it's valid JSON with heap snapshot structure
     import json
 
-    data = json.loads(snapshot_json)
-    assert "snapshot" in data or "nodes" in data
+    snapshot_data = json.loads(snapshot_json)
+    assert "snapshot" in snapshot_data, "Should have 'snapshot' key"
+
+    snap = snapshot_data["snapshot"]
+    assert "meta" in snap, "Should have metadata"
+    assert "node_count" in snap or "nodes" in snap, "Should have node data"
 
     await client.close()
 

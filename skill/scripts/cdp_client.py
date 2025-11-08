@@ -76,10 +76,17 @@ class CDPClient:
                 }
 
         # Connect to WebSocket
-        self.ws = await websockets.connect(ws_url)
+        # IMPORTANT: Increase max_size to allow large heap snapshot chunks
+        # Default is 1MB but Deno sends chunks up to ~1MB each
+        # Setting to 100MB to safely handle all chunk sizes
+        max_msg_size = 100 * 1024 * 1024
+        self.ws = await websockets.connect(ws_url, max_size=max_msg_size)
 
         # Start message handler
         asyncio.create_task(self._message_handler())
+
+        # Give message handler a moment to start
+        await asyncio.sleep(0.1)
 
         return self
 
@@ -104,10 +111,6 @@ class CDPClient:
                     method = data["method"]
                     params = data.get("params", {})
 
-                    # Debug: log all events (comment out for production)
-                    if "HeapProfiler" in method:
-                        print(f"    [DEBUG] Event: {method}")
-
                     # Built-in event handling
                     if method == "Debugger.paused":
                         self.paused = True
@@ -123,6 +126,12 @@ class CDPClient:
 
         except websockets.exceptions.ConnectionClosed:
             pass
+        except Exception as e:
+            # Log unexpected errors
+            import traceback
+
+            print(f"CDP message handler error: {e}")
+            traceback.print_exc()
 
     async def send_command(
         self, method: str, params: Optional[Dict] = None
@@ -364,42 +373,16 @@ class CDPClient:
         """
         Take a heap snapshot.
 
-        ⚠️  KNOWN ISSUE: Deno's V8 inspector does NOT send heap snapshot chunks.
-        This method will return empty string when connected to Deno.
-
-        Workaround: Use Chrome DevTools UI to manually capture heap snapshots
-        and export them as .heapsnapshot files for analysis.
-
-        See docs/DENO_HEAP_SNAPSHOT_BUG.md for details.
+        Args:
+            report_progress: If True, prints progress updates
 
         Returns:
-            Heap snapshot as JSON string (can be large!)
-            Returns empty string if connected to Deno due to known bug.
+            Heap snapshot as JSON string (can be large, typically several MB)
+
+        Note:
+            Requires WebSocket max_size to be set high enough (default 100MB).
+            Heap snapshots can be several MB and are sent in ~1MB chunks.
         """
-        # Warn if connected to Deno
-        if self.runtime_info and self.runtime_info.get("is_deno"):
-            import warnings
-
-            warnings.warn(
-                "\n"
-                "⚠️  HEAP SNAPSHOT LIMITATION: Deno's V8 inspector does not send heap snapshot chunks.\n"
-                "   This is a known Deno bug. takeHeapSnapshot will return empty data.\n"
-                "\n"
-                "   Workaround: Use Chrome DevTools UI to manually capture heap snapshots:\n"
-                "   1. Open chrome://inspect in Chrome\n"
-                "   2. Click 'inspect' on your Deno process\n"
-                "   3. Go to Memory tab\n"
-                "   4. Click 'Take snapshot'\n"
-                "   5. Right-click snapshot and 'Save as...'\n"
-                "   6. Load the .heapsnapshot file with our HeapSnapshot class\n"
-                "\n"
-                "   See docs/DENO_HEAP_SNAPSHOT_BUG.md for full details.\n",
-                UserWarning,
-                stacklevel=2,
-            )
-
-        await self.enable_heap_profiler()
-
         chunks = []
         asyncio.Event()
         progress_done = asyncio.Event()
@@ -407,33 +390,34 @@ class CDPClient:
         async def chunk_handler(params):
             if "chunk" in params:
                 chunks.append(params["chunk"])
-                # Debug: print chunk progress
-                if len(chunks) % 100 == 0:
-                    print(f"    Received {len(chunks)} chunks...")
 
         async def progress_handler(params):
-            # Debug: print progress
             done = params.get("done", 0)
             total = params.get("total", 0)
-            print(f"    Progress: {done}/{total}")
+
+            # Print progress if requested
+            if report_progress and done % 20000 == 0:  # Print every 20k nodes
+                print(f"  Heap snapshot progress: {done:,}/{total:,}")
 
             # When finished is True, snapshot is complete
             if params.get("finished"):
-                print(f"    Snapshot complete!")
                 progress_done.set()
 
-        # Listen for heap snapshot chunks
+        # IMPORTANT: Register event handlers BEFORE enabling heap profiler
+        # Otherwise we might miss early chunks
         self.on_event("HeapProfiler.addHeapSnapshotChunk", chunk_handler)
 
         # Listen for progress (if reportProgress is True)
         if report_progress:
             self.on_event("HeapProfiler.reportHeapSnapshotProgress", progress_handler)
 
-        # Request snapshot (don't await - command might not return until acknowledged)
+        # Now enable heap profiler
+        await self.enable_heap_profiler()
+
+        # Request snapshot
         try:
-            print(f"    Sending takeHeapSnapshot command...")
-            # Send command in background - we'll wait for events instead
-            asyncio.create_task(
+            # Start snapshot capture in background so we can listen for chunks
+            snapshot_task = asyncio.create_task(
                 self.send_command(
                     "HeapProfiler.takeHeapSnapshot", {"reportProgress": report_progress}
                 )
@@ -442,17 +426,16 @@ class CDPClient:
             # Wait for progress to indicate completion (if we're tracking progress)
             # Otherwise wait a bit for chunks
             if report_progress:
-                print(f"    Waiting for progress completion...")
                 await asyncio.wait_for(progress_done.wait(), timeout=30)
             else:
                 # Wait for chunks to arrive - increase timeout for large heaps
-                print(f"    Waiting for chunks...")
                 await asyncio.sleep(5.0)
 
-            print(f"    Got {len(chunks)} total chunks")
+            # Now await the command completion
+            await snapshot_task
 
         except asyncio.TimeoutError:
-            print(f"  Warning: Heap snapshot timed out, got {len(chunks)} chunks")
+            pass  # Timeout is OK, we'll return whatever chunks we got
 
         finally:
             # Clean up event handlers
