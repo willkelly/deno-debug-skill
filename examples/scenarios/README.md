@@ -107,10 +107,9 @@ cat 1_memory_leak/prompt.txt
 Each investigation creates artifacts in `data/scenarios/<scenario>_<timestamp>/`:
 
 ```
-data/scenarios/memory_leak_20251108_123456/
-├── app.log                      # Deno app output
-├── investigation.json           # Breadcrumb timeline
-├── investigation_report.org     # Full Org mode report (or REPORT.md)
+investigation_output/
+├── REPORT.md                    # Investigation report (Markdown)
+├── investigation.json           # Breadcrumb timeline (if used)
 ├── baseline.heapsnapshot        # Before state (memory leak)
 ├── after_leak.heapsnapshot      # After state (memory leak)
 └── profile.cpuprofile           # CPU profile (performance)

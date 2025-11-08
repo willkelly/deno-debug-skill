@@ -62,7 +62,7 @@ jobs:
     - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r skill/requirements.txt
+        pip install -r deno-debugger/requirements.txt
 
     - name: Create output directories
       run: |
@@ -105,18 +105,18 @@ jobs:
 
     - name: Check code formatting with black
       run: |
-        black --check skill/scripts/ tests/ validate.py simulate_validation.py
+        black --check deno-debugger/scripts/ tests/ validate.py simulate_validation.py
 
     - name: Check import sorting with isort
       run: |
-        isort --check-only skill/scripts/ tests/ validate.py simulate_validation.py
+        isort --check-only deno-debugger/scripts/ tests/ validate.py simulate_validation.py
 
     - name: Lint with flake8
       run: |
         # Stop on errors, ignore line length (handled by black)
         # E402: module imports not at top (expected in test files that modify sys.path)
         # F541: f-string without placeholders (for print statements)
-        flake8 skill/scripts/ tests/ validate.py simulate_validation.py --max-line-length=120 --extend-ignore=E203,W503,E402,F541
+        flake8 deno-debugger/scripts/ tests/ validate.py simulate_validation.py --max-line-length=120 --extend-ignore=E203,W503,E402,F541
 
   type-check:
     name: Type Checking
@@ -132,10 +132,10 @@ jobs:
 
     - name: Install dependencies
       run: |
-        pip install -r skill/requirements.txt
+        pip install -r deno-debugger/requirements.txt
         pip install mypy
 
     - name: Type check with mypy
       run: |
-        mypy skill/scripts/ --ignore-missing-imports --no-strict-optional
+        mypy deno-debugger/scripts/ --ignore-missing-imports --no-strict-optional
       continue-on-error: true  # Don't fail on type errors initially
