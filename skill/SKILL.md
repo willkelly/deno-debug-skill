@@ -247,25 +247,35 @@ await client.close()
 
 ### 7. Present Findings
 
-Summarize your findings to the user:
+When investigation is complete, provide a summary to the user in this exact format:
 
 ```
 Investigation Complete
 ======================
 
-Root Cause: [Brief description]
-Location: file.ts:line
+## Root Cause
+[One sentence describing the bug/issue]
 
-Finding: [What you discovered]
+## Location
+file.ts:line_number
 
-Fix: [Recommended solution]
+## Finding
+[2-3 sentences explaining what you discovered and why it's happening]
 
-All investigation artifacts saved to investigation_output/
+## Fix
+[Specific actionable fix with code example if applicable]
+
+## Investigation Artifacts
+All artifacts saved to investigation_output/:
 - investigation.json (breadcrumb timeline)
-- investigation.org (full report)
-- baseline.heapsnapshot (before state)
-- after.heapsnapshot (after state)
+- investigation.org (Org mode report with full timeline)
+- baseline.heapsnapshot (before state, X MB)
+- after.heapsnapshot (after state, Y MB)
+
+You can review the complete investigation timeline in investigation.org
 ```
+
+**IMPORTANT**: Always save artifacts before presenting findings. The user should be able to review your investigation process.
 
 ## Complete Example: Memory Leak Investigation
 
