@@ -1,6 +1,6 @@
 ---
 name: deno-debugger
-description: Interactive debugger for Deno/TypeScript applications using the V8 Inspector Protocol. This skill should be used when investigating issues in Deno applications, including memory leaks, performance bottlenecks, race conditions, crashes, or any runtime behavior that requires step-by-step debugging, heap analysis, or CPU profiling. Provides CDP client tools, heap/CPU analyzers, breadcrumb tracking, and automated Org mode report generation.
+description: Interactive debugger for Deno/TypeScript applications using the V8 Inspector Protocol. This skill should be used when investigating issues in Deno applications, including memory leaks, performance bottlenecks, race conditions, crashes, or any runtime behavior that requires step-by-step debugging, heap analysis, or CPU profiling. Provides CDP client tools, heap/CPU analyzers, and investigation tracking.
 ---
 
 # Deno Debugger Skill
@@ -23,11 +23,52 @@ All infrastructure is already implemented in `./scripts/`:
 - `cdp_client.py` - Complete CDP WebSocket client
 - `heap_analyzer.py` - Heap snapshot parsing and analysis
 - `cpu_profiler.py` - CPU profiling and hot path detection
-- `breadcrumbs.py` - Investigation timeline tracking
-- `visualize.py` - Flamegraphs and charts
-- `org_report.py` - Org mode report generation
+- `breadcrumbs.py` - Investigation state tracking (use sparingly, see below)
+- `visualize.py` - Flamegraphs and charts (optional)
 
 Your job is to **use these scripts** to investigate, not rewrite them.
+
+## Breadcrumb Usage Guidelines
+
+**Use breadcrumbs to track your investigation state, NOT as a log of every action.**
+
+Use breadcrumbs for:
+- ✅ Initial hypothesis about the problem
+- ✅ Major decision points (e.g., "focusing on heap analysis vs CPU profiling")
+- ✅ Key findings that change your understanding
+- ✅ Final conclusion
+
+Do NOT use breadcrumbs for:
+- ❌ Every file read or code inspection
+- ❌ Routine actions like "connecting to inspector"
+- ❌ Small intermediate steps
+- ❌ Things already visible in the final report
+
+**Example of good breadcrumb use:**
+```python
+bc = Breadcrumbs()
+
+# High-level hypothesis
+bc.add_hypothesis(
+    "Memory leak caused by retained event listeners",
+    rationale="User reports memory grows when users navigate between pages"
+)
+
+# Major finding that changes direction
+bc.add_finding(
+    "Found 500+ DOM nodes retained after page navigation",
+    data={'node_count': 523, 'size_mb': 12.4},
+    severity='critical'
+)
+
+# Final decision
+bc.add_decision(
+    "Root cause: event listeners not cleaned up in destroy()",
+    rationale="Heap snapshot shows references from global event bus"
+)
+```
+
+The breadcrumb timeline is for YOU to track your thinking, not a transcript of every action.
 
 ## Prerequisites
 
@@ -78,14 +119,17 @@ async def investigate():
 
 ### 2. Form Hypothesis
 
-Record your initial hypothesis about the problem:
+Form a clear hypothesis about what's causing the problem. You can optionally record it:
 
 ```python
+# Optional: Track your initial hypothesis
 bc.add_hypothesis(
     "Memory leak in upload handler due to retained buffers",
     rationale="User reports memory grows after each file upload"
 )
 ```
+
+**Note**: Only use breadcrumbs if the investigation is complex enough to warrant tracking your thought process. For simple investigations, skip breadcrumbs entirely.
 
 ### 3. Choose Investigation Pattern
 
@@ -98,7 +142,6 @@ import json
 from heap_analyzer import HeapSnapshot
 
 # 1. Capture baseline
-bc.add_test('baseline_snapshot', 'Capturing initial heap state')
 snapshot1_json = await client.take_heap_snapshot(report_progress=False)
 snapshot1 = json.loads(snapshot1_json)
 
@@ -106,29 +149,21 @@ snapshot1 = json.loads(snapshot1_json)
 # ... trigger leak ...
 
 # 3. Capture comparison
-bc.add_test('comparison_snapshot', 'Capturing heap after leak')
 snapshot2_json = await client.take_heap_snapshot(report_progress=False)
 snapshot2 = json.loads(snapshot2_json)
 
 # 4. Analyze growth
 growth = len(snapshot2_json) - len(snapshot1_json)
-bc.add_finding(
-    f"Heap grew by {growth:,} bytes",
-    data={'growth_bytes': growth},
-    severity='warning'
-)
+growth_mb = growth / (1024 * 1024)
+print(f"Heap grew by {growth_mb:.2f} MB")
 
-# 5. Analyze the snapshot
-heap = HeapSnapshot(snapshot2)
-stats = heap.get_node_size_summary()
-print(stats.head(10))  # Top object types
+# 5. Analyze the snapshot (optional - may fail with Deno)
+# heap = HeapSnapshot(snapshot2)
+# stats = heap.get_node_size_summary()
+# print(stats.head(10))  # Top object types
 
-# 6. Record findings
-bc.add_finding(
-    "Found large ArrayBuffer objects in heap",
-    data={'count': 100, 'size_mb': 50},
-    severity='critical'
-)
+# 6. Examine code to find the cause
+# [Your code inspection here]
 ```
 
 #### Pattern B: Performance Bottleneck
@@ -137,8 +172,8 @@ bc.add_finding(
 from cpu_profiler import CPUProfile
 
 # 1. Start profiling
-bc.add_test('cpu_profiling', 'Profiling slow operation')
 await client.start_profiling()
+print("Profiling started")
 
 # 2. Trigger slow operation
 # ... trigger slow code ...
@@ -150,15 +185,12 @@ profile = CPUProfile(profile_data)
 
 # 4. Find hot functions
 hot_functions = profile.get_hot_functions()
+print("\nHot functions:")
 for func in hot_functions[:5]:
-    print(f"{func['function_name']}: {func['self_time_percent']:.1f}%")
+    print(f"  {func['function_name']}: {func['self_time_percent']:.1f}%")
 
-# 5. Record findings
-bc.add_finding(
-    f"Found bottleneck in {hot_functions[0]['function_name']}",
-    data={'cpu_percent': hot_functions[0]['self_time_percent']},
-    severity='critical'
-)
+# 5. Examine the slow code to understand why it's expensive
+# [Your code inspection here]
 ```
 
 #### Pattern C: Race Condition
@@ -166,6 +198,7 @@ bc.add_finding(
 ```python
 # 1. Set breakpoints at async boundaries
 await client.set_breakpoint_by_url('file:///app.ts', 42)
+print("Breakpoint set at line 42")
 
 # 2. Set pause on exceptions
 await client.set_pause_on_exceptions('all')
@@ -177,14 +210,15 @@ await client.set_pause_on_exceptions('all')
 frames = await client.get_call_frames()
 if frames:
     variables = await client.get_scope_variables(frames[0]['callFrameId'])
+    print(f"Paused at: {frames[0]['location']}")
+    print(f"Variables: {variables}")
 
 # 5. Evaluate expressions to check state
 result = await client.evaluate('myVariable.status')
-bc.add_finding(
-    "Variable in unexpected state during async operation",
-    data={'state': result},
-    severity='high'
-)
+print(f"Variable state: {result}")
+
+# 6. Examine code to find missing awaits or improper synchronization
+# [Your code inspection here]
 ```
 
 ### 4. Examine Code
@@ -206,33 +240,71 @@ for i, line in enumerate(lines, 1):
         )
 ```
 
-### 5. Record Decision
+### 5. Analyze and Conclude
 
-Document your conclusion:
+Based on your investigation data, determine the root cause. You can optionally record your conclusion:
 
 ```python
+# Optional: Record your conclusion if using breadcrumbs
 bc.add_decision(
     "Root cause identified",
     rationale="Heap snapshot shows ArrayBuffer retention, code shows missing cleanup"
 )
 ```
 
+Most importantly: **Understand the problem well enough to explain it clearly to the user.**
+
 ### 6. Save Artifacts
 
 ```python
 from pathlib import Path
+from datetime import datetime
 
 # Create output directory
 output_dir = Path('investigation_output')
 output_dir.mkdir(exist_ok=True)
 
-# Save investigation timeline
-bc.save(output_dir / 'investigation.json')
+# Generate markdown report
+timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+report_md = f"""# Investigation Report
 
-# Generate Org mode report
-timeline = bc.to_org_timeline()
-with open(output_dir / 'investigation.org', 'w') as f:
-    f.write(timeline)
+**Date**: {timestamp}
+**Issue**: Memory leak investigation
+
+## Summary
+
+[Brief summary of what you found]
+
+## Root Cause
+
+[One sentence describing the bug]
+
+## Details
+
+[Detailed explanation with code snippets]
+
+## Location
+
+- File: `file.ts`
+- Line: 42
+
+## Fix
+
+```typescript
+// Recommended fix
+[code example]
+```
+
+## Data
+
+- Heap growth: {growth:,} bytes
+- Snapshots captured: 2
+- Investigation data saved to: investigation_output/
+
+"""
+
+with open(output_dir / 'REPORT.md', 'w') as f:
+    f.write(report_md)
 
 # Save snapshots (if investigating memory)
 if snapshot1_json:
@@ -241,41 +313,48 @@ if snapshot1_json:
     with open(output_dir / 'after.heapsnapshot', 'w') as f:
         f.write(snapshot2_json)
 
+# Optionally save breadcrumbs if used
+if bc:
+    bc.save(output_dir / 'investigation.json')
+
 # Close connection
 await client.close()
 ```
 
 ### 7. Present Findings
 
-When investigation is complete, provide a summary to the user in this exact format:
+When investigation is complete, present your findings to the user as a clear, conversational summary:
+
+**Example:**
 
 ```
-Investigation Complete
-======================
+I found the memory leak! 🎯
 
-## Root Cause
-[One sentence describing the bug/issue]
+The issue is in `upload_handler.ts` at line 42. The `processUpload()` function
+creates ArrayBuffer objects but never releases them. Each upload adds ~50MB to
+a global `pendingUploads` array that never gets cleared.
 
-## Location
-file.ts:line_number
+Fix:
+Add this cleanup after processing:
+  pendingUploads.length = 0;  // Clear after each batch
 
-## Finding
-[2-3 sentences explaining what you discovered and why it's happening]
+Or better yet, don't store them at all - process and discard immediately.
 
-## Fix
-[Specific actionable fix with code example if applicable]
-
-## Investigation Artifacts
-All artifacts saved to investigation_output/:
-- investigation.json (breadcrumb timeline)
-- investigation.org (Org mode report with full timeline)
-- baseline.heapsnapshot (before state, X MB)
-- after.heapsnapshot (after state, Y MB)
-
-You can review the complete investigation timeline in investigation.org
+I've saved the investigation to investigation_output/:
+- REPORT.md - Full investigation report
+- baseline.heapsnapshot - Before state (8.8 MB)
+- after.heapsnapshot - After state (8.9 MB)
+- investigation.json - Investigation timeline (if breadcrumbs used)
 ```
 
-**IMPORTANT**: Always save artifacts before presenting findings. The user should be able to review your investigation process.
+**Guidelines for presenting findings:**
+- Be conversational and clear
+- Lead with the root cause
+- Explain WHY it's happening, not just WHAT
+- Provide a specific, actionable fix
+- Reference where artifacts are saved
+
+**IMPORTANT**: Always save artifacts before presenting findings.
 
 ## Complete Example: Memory Leak Investigation
 
@@ -286,70 +365,100 @@ import asyncio
 import json
 import sys
 from pathlib import Path
+from datetime import datetime
 
 sys.path.insert(0, str(Path('./scripts')))
 
 from cdp_client import CDPClient
-from breadcrumbs import Breadcrumbs
-from heap_analyzer import HeapSnapshot
 
 async def investigate_memory_leak():
-    # Setup
-    bc = Breadcrumbs()
-    bc.add_hypothesis(
-        "Memory leak due to retained buffers",
-        rationale="User reports memory growth"
-    )
+    print("Starting memory leak investigation...")
 
     # Connect
     client = CDPClient('127.0.0.1', 9229)
     await client.connect()
     await client.enable_debugger()
 
-    # Baseline snapshot
-    snapshot1_json = await client.take_heap_snapshot()
-    snapshot1 = json.loads(snapshot1_json)
-    bc.add_test('baseline', f'Captured {len(snapshot1_json)} bytes')
+    print("Connected to Deno inspector")
 
-    # Trigger leak (ask user or do programmatically)
-    print("Please trigger the leak now...")
+    # Baseline snapshot
+    print("\nCapturing baseline...")
+    snapshot1_json = await client.take_heap_snapshot()
+    baseline_size = len(snapshot1_json) / (1024 * 1024)  # MB
+    print(f"Baseline: {baseline_size:.2f} MB")
+
+    # Trigger leak
+    print("\nTrigger the leak now (or I'll wait 5 seconds)...")
     await asyncio.sleep(5)
 
     # Comparison snapshot
+    print("Capturing comparison snapshot...")
     snapshot2_json = await client.take_heap_snapshot()
-    snapshot2 = json.loads(snapshot2_json)
+    after_size = len(snapshot2_json) / (1024 * 1024)  # MB
 
     # Analyze
     growth = len(snapshot2_json) - len(snapshot1_json)
-    bc.add_finding(
-        f"Heap grew by {growth:,} bytes",
-        data={'growth': growth},
-        severity='warning'
-    )
+    growth_mb = growth / (1024 * 1024)
+    print(f"After: {after_size:.2f} MB (grew {growth_mb:.2f} MB)")
 
-    # Examine heap
-    heap = HeapSnapshot(snapshot2)
-    stats = heap.get_node_size_summary()
+    # Read and examine the source code
+    print("\nExamining source code...")
+    # [Your code inspection logic here]
 
-    # Record findings
-    top_type = stats.iloc[0]
-    bc.add_finding(
-        f"Largest object type: {top_type['type']}",
-        data={'count': top_type['count'], 'size': top_type['total_size']},
-        severity='critical'
-    )
+    # Save artifacts
+    output_dir = Path('investigation_output')
+    output_dir.mkdir(exist_ok=True)
 
-    # Save
-    Path('output').mkdir(exist_ok=True)
-    bc.save('output/investigation.json')
+    with open(output_dir / 'baseline.heapsnapshot', 'w') as f:
+        f.write(snapshot1_json)
+    with open(output_dir / 'after.heapsnapshot', 'w') as f:
+        f.write(snapshot2_json)
 
-    timeline = bc.to_org_timeline()
-    with open('output/investigation.org', 'w') as f:
-        f.write(timeline)
+    # Generate report
+    report = f"""# Memory Leak Investigation
+
+**Date**: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+
+## Summary
+
+Found memory leak in upload handler.
+
+## Root Cause
+
+The `processUpload()` function retains ArrayBuffer objects in a global array
+without cleanup.
+
+## Location
+
+- File: `upload_handler.ts`
+- Line: 42
+
+## Details
+
+Heap grew by {growth_mb:.2f} MB after a single operation. Analysis shows
+ArrayBuffer objects accumulating in the `pendingUploads` global array.
+
+## Fix
+
+```typescript
+// After processing uploads, clear the array:
+pendingUploads.length = 0;
+```
+
+## Data
+
+- Baseline heap: {baseline_size:.2f} MB
+- After operation: {after_size:.2f} MB
+- Growth: {growth_mb:.2f} MB
+- Snapshots saved to: investigation_output/
+"""
+
+    with open(output_dir / 'REPORT.md', 'w') as f:
+        f.write(report)
 
     await client.close()
 
-    print("Investigation complete! Check output/ directory")
+    print(f"\n✓ Investigation complete! See {output_dir}/REPORT.md")
 
 # Run it
 asyncio.run(investigate_memory_leak())
@@ -382,17 +491,23 @@ profile_data = await client.stop_profiling()
 await client.close()
 ```
 
-### Breadcrumbs Methods
+### Breadcrumbs Methods (Optional)
+
+**Only use for complex investigations where tracking your thought process adds value.**
 
 ```python
 bc = Breadcrumbs()
+
+# Track major milestones only
 bc.add_hypothesis(description, rationale="why")
-bc.add_test(name, details)
 bc.add_finding(description, data={}, severity='info|warning|critical')
 bc.add_decision(description, rationale="why")
-bc.save('path.json')
-timeline = bc.to_org_timeline()
+
+# Save for later review
+bc.save('investigation.json')
 ```
+
+Note: Don't use `add_test()` for routine actions. Reserve breadcrumbs for significant investigative decisions.
 
 ### HeapSnapshot Methods
 
@@ -419,7 +534,7 @@ issues = profile.detect_async_issues()
 ## Key Principles
 
 1. **Always use pre-written scripts** - Never write your own CDP client
-2. **Track breadcrumbs** - Record every hypothesis, test, finding, decision
+2. **Use breadcrumbs sparingly** - Track major milestones, not every action
 3. **Save artifacts** - Snapshots, profiles, investigation timeline
 4. **Communicate clearly** - Explain what you're doing and why
 5. **Be methodical** - Form hypothesis → test → analyze → conclude
@@ -429,13 +544,13 @@ issues = profile.detect_async_issues()
 ❌ **DON'T** write a new CDP WebSocket client
 ❌ **DON'T** parse heap snapshots manually
 ❌ **DON'T** write custom profiling code
-❌ **DON'T** skip breadcrumb tracking
+❌ **DON'T** use breadcrumbs for every small action
 ❌ **DON'T** forget to save artifacts
 
 ✅ **DO** use CDPClient from cdp_client.py
 ✅ **DO** use HeapSnapshot from heap_analyzer.py
 ✅ **DO** use CPUProfile from cpu_profiler.py
-✅ **DO** track everything with Breadcrumbs
+✅ **DO** use breadcrumbs only for major milestones
 ✅ **DO** save snapshots and investigation timeline
 
 ---
