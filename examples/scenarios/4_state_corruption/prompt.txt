@@ -1,0 +1,23 @@
+I'm seeing really strange behavior in my user session management system. When I create multiple user sessions, they seem to be interfering with each other in weird ways:
+
+1. When I create user "alice", then create user "bob", alice's username changes to "bob"!
+2. When I add permissions to one user, sometimes it affects other users
+3. The permission cache seems to get invalidated randomly, even for users I didn't modify
+4. Sometimes sessions get a "corrupted" flag set, but I can't figure out why
+
+The app is running on http://localhost:8003 with these endpoints:
+  POST /session       - Creates a user session
+  POST /permission    - Adds a permission to a user
+  GET  /check         - Checks if user has a permission
+  GET  /sessions      - Views all active sessions
+  GET  /simulate      - Runs a workflow that exposes the bugs
+
+I think there's something wrong with how state is being managed, but I can't see where the corruption is happening. Can you use breakpoints and variable watches to track down where the state is getting corrupted?
+
+Some specific things I'd like to understand:
+- Why do sessions share state when they should be independent?
+- Where exactly does the username get overwritten?
+- What's setting the "corrupted" flag?
+- Why does the cache invalidation affect unrelated users?
+
+(I've started the app with --inspect on port 9229)

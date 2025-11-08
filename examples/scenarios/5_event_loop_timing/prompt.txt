@@ -1,0 +1,19 @@
+I'm having issues with task execution timing in my application. Tasks aren't completing in the order I expect, and sometimes when I check if a task is done immediately after scheduling it, it says "pending" even though I used setTimeout with 0ms delay!
+
+Specific issues I'm seeing:
+1. When I schedule a task with setTimeout(0), I expect it to run "immediately", but it stays in "pending" status
+2. When I mix Promise-based tasks with setTimeout-based tasks, they execute in unexpected order
+3. The task completion checks are unreliable - tasks show as incomplete even after I think they should be done
+4. When processing multiple tasks "in order", later tasks start before earlier ones finish
+
+The app is running on http://localhost:8004 with these endpoints:
+  POST /task/immediate    - Schedules task with setTimeout (should be immediate?)
+  POST /task/promise      - Schedules task with Promise
+  POST /mixed             - Triggers mixed scheduling
+  POST /batch             - Processes multiple tasks in order (or so I thought...)
+  GET  /tasks             - Views task queue
+  GET  /check/:id         - Checks task completion
+
+I think this is related to how JavaScript's event loop works (microtasks vs macrotasks?), but I don't understand what's happening. Can you step through the code and show me the actual execution order, and help me understand why my timing assumptions are wrong?
+
+(I've started the app with --inspect on port 9229)
