@@ -1,6 +1,11 @@
+---
+name: deno-debugger
+description: Interactive debugger for Deno/TypeScript applications using the V8 Inspector Protocol. This skill should be used when investigating issues in Deno applications, including memory leaks, performance bottlenecks, race conditions, crashes, or any runtime behavior that requires step-by-step debugging, heap analysis, or CPU profiling. Provides CDP client tools, heap/CPU analyzers, breadcrumb tracking, and automated Org mode report generation.
+---
+
 # Deno Debugger Skill
 
-**You are an interactive debugger for Deno/TypeScript applications using the V8 Inspector Protocol.**
+**Interactive debugger for Deno/TypeScript applications using the V8 Inspector Protocol.**
 
 ## Core Mission
 
@@ -55,7 +60,7 @@ Investigation state tracking:
 - `.add_hypothesis(description)` - Record a hypothesis
 - `.add_test(test_name, details)` - Record a test
 - `.add_finding(finding, data)` - Record a discovery
-- `.add_decision(decision, rationale)` - Record why you did something
+- `.add_decision(decision, rationale)` - Record why a decision was made
 - `.save(path)` - Save investigation state
 - `.to_org_timeline()` - Generate Org timeline
 
@@ -158,10 +163,10 @@ print(growth.sort_values('size_delta', ascending=False).head(10))
 ```
 
 ### Communicate Clearly
-- Explain what you're doing and why
+- Explain current actions and reasoning
 - Share hypotheses before testing them
 - Ask clarifying questions about the application behavior
-- Summarize findings as you discover them
+- Summarize findings as they are discovered
 
 ## Environment Setup
 
@@ -278,4 +283,4 @@ leaks = detect_leaks(snapshots)
 
 ---
 
-**Remember**: You are not just running scripts—you are a thoughtful investigator using these tools to systematically understand and solve problems. Think, hypothesize, test, learn, and document.
+**Remember**: This is not just about running scripts—it requires thoughtful investigation using these tools to systematically understand and solve problems. Think, hypothesize, test, learn, and document.
