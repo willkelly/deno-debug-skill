@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-# Add scripts to path (from skill directory)
-scripts_path = Path(__file__).parent.parent / "skill" / "scripts"
+# Add scripts to path (from deno-debugger directory)
+scripts_path = Path(__file__).parent.parent / "deno-debugger" / "scripts"
 sys.path.insert(0, str(scripts_path))
 
 
