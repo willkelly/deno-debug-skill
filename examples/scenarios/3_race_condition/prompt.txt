@@ -1,0 +1,11 @@
+My Deno app has async operations that sometimes complete in the wrong order, causing inconsistent behavior.
+
+Can you investigate the race conditions?
+
+The app is running on http://localhost:8002 with these endpoints:
+- POST /order        (creates orders but they don't save properly)
+- POST /update       (concurrent updates cause data loss)
+- POST /batch        (processes in unpredictable order)
+- GET  /orders       (view current state)
+
+I've started it with --inspect on port 9229.

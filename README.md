@@ -454,6 +454,28 @@ pytest tests/ -v
 python validate.py
 ```
 
+### Sanity Testing with Scenarios
+
+Try the skill with realistic debugging scenarios:
+
+```bash
+# Run a complete scenario (interactive)
+cd examples/scenarios/1_memory_leak/
+./run.sh
+
+# The script will:
+# 1. Start a buggy Deno app with --inspect
+# 2. Show you a prompt to give Claude
+# 3. Let Claude investigate the bug end-to-end
+```
+
+**Available scenarios:**
+- **Memory Leak** - ArrayBuffer accumulation in upload handler
+- **Performance Bottleneck** - Inefficient prime checking and fibonacci
+- **Race Condition** - Missing awaits and concurrent update bugs
+
+See [examples/scenarios/README.md](examples/scenarios/README.md) for details.
+
 **What gets tested:**
 - ✅ CDP connection to Deno
 - ✅ Breakpoint setting

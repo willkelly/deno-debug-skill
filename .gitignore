@@ -20,6 +20,10 @@ investigation_*.org
 investigation_*.json
 breadcrumbs_*.json
 
+# Scenario outputs (from examples/scenarios/*/run.sh)
+examples/scenarios/*/output/
+examples/scenarios/*/*.log
+
 # Temporary files
 *.log
 *.tmp

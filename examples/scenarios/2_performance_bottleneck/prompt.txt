@@ -1,0 +1,9 @@
+My API responses are very slow, especially for certain endpoints.
+
+Can you profile the application and identify the performance bottlenecks?
+
+The app is running on http://localhost:8001 with these endpoints:
+- GET /primes?limit=50000  (very slow)
+- GET /fibonacci?n=40      (very slow)
+
+I've started it with --inspect on port 9229.
