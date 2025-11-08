@@ -279,41 +279,83 @@ output_dir = Path('investigation_output')
 output_dir.mkdir(exist_ok=True)
 
 # Generate markdown report
+# IMPORTANT: Each section answers a DIFFERENT question. Avoid repetition.
 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 report_md = f"""# Investigation Report
 
 **Date**: {timestamp}
-**Issue**: Memory leak investigation
+**Issue**: [Type of issue - e.g., "Memory leak investigation"]
 
 ## Summary
 
-[Brief summary of what you found]
+[What's broken? One clear sentence.]
+Example: "Upload handler retains ArrayBuffer objects in global array without cleanup."
 
 ## Root Cause
 
-[One sentence describing the bug]
+[WHY is it broken? Explain the mechanism.]
+Example: "The handleUpload() function pushes buffers to leakedBuffers[] for tracking,
+but never removes them. Each upload adds ~45KB that persists for the app lifetime."
+
+NOT just: "Buffers accumulate" (that's restating Summary)
 
 ## Details
 
-[Detailed explanation with code snippets]
+[What ELSE did you learn? Show your evidence.]
+- Include relevant code snippets (not just line numbers)
+- Explain the anti-pattern or why this is problematic
+- Be specific about impact: "~45KB per upload = OOM after 20,000 requests in production"
+
+Example:
+```typescript
+// Line 22-23 in app.ts:
+const leakedBuffers: ArrayBuffer[] = [];  // Global array
+leakedBuffers.push(buffer);  // Never cleared
+
+// This is a "retain-and-forget" anti-pattern. The array grows indefinitely
+// because buffers are added but never removed after processing completes.
+```
+
+Heap grew {growth_mb:.2f} MB in single upload test. At this rate, production
+would hit OOM after ~20,000 uploads (assuming 1GB heap limit).
 
 ## Location
 
-- File: `file.ts`
-- Line: 42
+- File: `[filename]`
+- Line: [number]
+- Function: `[function_name]()`
 
 ## Fix
 
+[What's the BEST solution and WHY?]
+
 ```typescript
-// Recommended fix
-[code example]
+// Option 1: Remove the global array (RECOMMENDED)
+// Process buffers immediately and discard them.
+// This eliminates state and prevents any retention.
+
+async function handleUpload(fileSize: number): Promise<string> {{
+  const buffer = new ArrayBuffer(fileSize);
+  const result = await processBuffer(buffer);
+  // Buffer goes out of scope here - eligible for GC
+  return result;
+}}
+
+// Option 2: Clear array periodically (NOT RECOMMENDED)
+// Still maintains global state, could miss edge cases.
+leakedBuffers.length = 0;
 ```
+
+Use Option 1 - no global state means no retention bugs.
 
 ## Data
 
-- Heap growth: {growth:,} bytes
-- Snapshots captured: 2
-- Investigation data saved to: investigation_output/
+- Baseline heap: [X] MB
+- After operation: [Y] MB
+- Growth: [Z] MB ([percentage]%)
+- Rate: ~[X]KB per operation
+- Projected OOM: After ~[N] operations
+- Snapshots saved to: investigation_output/
 
 """
 
@@ -428,42 +470,77 @@ async def investigate_memory_leak():
     with open(output_dir / 'after.heapsnapshot', 'w') as f:
         f.write(snapshot2_json)
 
-    # Generate report
+    # Generate report (following the new guidelines)
+    growth_kb = growth / 1024
+    uploads_to_oom = (1024 * 1024 * 1024) / growth  # 1GB heap limit
+
     report = f"""# Memory Leak Investigation
 
 **Date**: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 
 ## Summary
 
-Found memory leak in upload handler.
+Upload handler retains ArrayBuffer objects in global array without cleanup.
 
 ## Root Cause
 
-The `processUpload()` function retains ArrayBuffer objects in a global array
-without cleanup.
+The `handleUpload()` function pushes buffers to `pendingUploads[]` for tracking,
+but never removes them. Each upload adds ~{growth_kb:.0f} KB that persists for
+the application lifetime.
+
+## Details
+
+```typescript
+// Line 13-22 in upload_handler.ts:
+const pendingUploads: ArrayBuffer[] = [];  // Global array
+
+async function handleUpload(fileSize: number) {{
+  const buffer = new ArrayBuffer(fileSize);
+  pendingUploads.push(buffer);  // BUG: Never cleared!
+  await processBuffer(buffer);
+}}
+```
+
+This is a "retain-and-forget" anti-pattern. The array grows indefinitely because
+buffers are added but never removed after processing completes. There's no cleanup
+logic in error handlers or success paths.
+
+Heap grew {growth_mb:.2f} MB in single upload test. At this rate, production would
+hit OOM after ~{uploads_to_oom:,.0f} uploads (assuming 1GB heap limit).
 
 ## Location
 
 - File: `upload_handler.ts`
-- Line: 42
-
-## Details
-
-Heap grew by {growth_mb:.2f} MB after a single operation. Analysis shows
-ArrayBuffer objects accumulating in the `pendingUploads` global array.
+- Line: 22
+- Function: `handleUpload()`
 
 ## Fix
 
 ```typescript
-// After processing uploads, clear the array:
+// Option 1: Remove the global array (RECOMMENDED)
+// Process buffers immediately and discard them.
+async function handleUpload(fileSize: number): Promise<string> {{
+  const buffer = new ArrayBuffer(fileSize);
+  const result = await processBuffer(buffer);
+  // Buffer goes out of scope here - eligible for GC
+  return result;
+}}
+
+// Option 2: Clear array after each request (NOT RECOMMENDED)
+// Still maintains global state, could miss edge cases.
 pendingUploads.length = 0;
 ```
+
+Recommendation: Use Option 1. Removing global state entirely prevents any retention
+bugs and makes the code easier to reason about.
 
 ## Data
 
 - Baseline heap: {baseline_size:.2f} MB
 - After operation: {after_size:.2f} MB
-- Growth: {growth_mb:.2f} MB
+- Growth: {growth_mb:.2f} MB ({(growth / len(snapshot1_json)) * 100:.2f}%)
+- Rate: ~{growth_kb:.0f} KB per upload
+- Projected OOM: After ~{uploads_to_oom:,.0f} uploads
 - Snapshots saved to: investigation_output/
 """
 
