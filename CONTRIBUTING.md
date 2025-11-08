@@ -50,43 +50,6 @@ from scripts.heap_analyzer import detect_event_listener_leaks
 leaks = detect_event_listener_leaks(snapshot)
 print(leaks)
 ```
-```
-
-### Adding New Visualization Types
-
-Edit `scripts/visualize.py`:
-
-```python
-def async_timeline(profile: CPUProfile, output_path: str) -> str:
-    """
-    Visualize async operation timeline.
-
-    Args:
-        profile: CPU profile with async operations
-        output_path: Where to save image
-
-    Returns:
-        Path to saved image
-    """
-    # Your visualization logic
-    fig, ax = plt.subplots(figsize=(14, 8))
-
-    # ... create visualization ...
-
-    plt.savefig(output_path, dpi=150)
-    return output_path
-```
-
-Update `SKILL.md`:
-
-```markdown
-## Async Timeline Visualization
-
-```python
-from scripts.visualize import async_timeline
-async_timeline(profile, 'async_timeline.png')
-```
-```
 
 ### Adding New Debugging Patterns
 

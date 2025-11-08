@@ -54,7 +54,6 @@ python validate.py
 ### Skill Dependencies (User)
 - Python 3.9+
 - pandas, numpy (data analysis)
-- matplotlib, seaborn (visualization)
 - websockets, aiohttp (CDP connection)
 - See `deno-debugger/requirements.txt` for complete list
 

@@ -153,7 +153,6 @@ deno-debugger/
     ├── heap_analyzer.py  # Heap snapshot parsing
     ├── cpu_profiler.py   # CPU profile analysis
     ├── breadcrumbs.py    # Investigation tracking (optional)
-    ├── visualize.py      # Flamegraphs (optional)
     └── org_report.py     # Org mode reports (legacy, optional)
 ```
 

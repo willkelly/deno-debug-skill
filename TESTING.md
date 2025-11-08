@@ -40,7 +40,6 @@ pytest tests/ -v
 - `scripts/heap_analyzer.py` - Parser logic
 - `scripts/cpu_profiler.py` - Parser logic
 - `scripts/org_report.py` - (TODO)
-- `scripts/visualize.py` - (TODO)
 
 ### 2. Integration Tests (validate.py)
 
@@ -59,7 +58,6 @@ python validate.py
 - ✅ CPU profile capture from real Deno
 - ✅ Parsing real V8 data (not just fixtures)
 - ✅ Snapshot comparison
-- ✅ Visualization generation
 - ✅ Org report generation
 - ✅ End-to-end workflow
 
@@ -164,7 +162,6 @@ Then add tests that use these real fixtures to ensure parsing handles all real-w
 | heap_analyzer.py | ✅ | ✅ | ~70% |
 | cpu_profiler.py | ✅ | ✅ | ~70% |
 | breadcrumbs.py | ✅ | ✅ | ~95% |
-| visualize.py | ❌ | ✅ | ~30% |
 | org_report.py | ❌ | ✅ | ~40% |
 
 ### What's Not Tested Yet
@@ -303,9 +300,6 @@ cat data/validation_snapshot.heapsnapshot | jq . | less
 
 # View profile
 cat data/validation_profile.cpuprofile | jq . | less
-
-# View flamegraph
-open output/validation_flamegraph.png
 
 # View report
 emacs output/validation_report.org

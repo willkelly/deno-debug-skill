@@ -24,7 +24,6 @@ All infrastructure is already implemented in `./scripts/`:
 - `heap_analyzer.py` - Heap snapshot parsing and analysis
 - `cpu_profiler.py` - CPU profiling and hot path detection
 - `breadcrumbs.py` - Investigation state tracking (use sparingly, see below)
-- `visualize.py` - Flamegraphs and charts (optional)
 
 Your job is to **use these scripts** to investigate, not rewrite them.
 
