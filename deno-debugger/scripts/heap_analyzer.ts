@@ -10,7 +10,7 @@
  */
 
 import type {
-  HeapComparisonResult,
+  HeapComparisonResult as _HeapComparisonResult,
   HeapEdge,
   HeapNode,
   HeapSnapshotData,

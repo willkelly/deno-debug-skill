@@ -9,7 +9,7 @@
  * - Generate performance summaries
  */
 
-import type { CPUCallFrame, CPUProfileData, CPUProfileNode } from "./types.ts";
+import type { CPUCallFrame as _CPUCallFrame, CPUProfileData, CPUProfileNode } from "./types.ts";
 import type { CDPClient } from "./cdp_client.ts";
 
 export interface HotFunction {

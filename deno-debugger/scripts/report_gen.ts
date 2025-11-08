@@ -10,7 +10,7 @@
  * - Investigation timeline (optional)
  */
 
-import type { Breadcrumb } from "./types.ts";
+import type { Breadcrumb as _Breadcrumb } from "./types.ts";
 import type { Breadcrumbs } from "./breadcrumbs.ts";
 
 export interface Finding {
