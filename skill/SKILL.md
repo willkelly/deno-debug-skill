@@ -327,26 +327,30 @@ would hit OOM after ~20,000 uploads (assuming 1GB heap limit).
 
 ## Fix
 
-[What's the BEST solution and WHY?]
+[What's the solution and WHY does it work?]
+
+Show the BEST solution with clear reasoning. Only include alternatives if they have
+legitimate trade-offs (e.g., performance vs simplicity). Don't show clearly inferior
+options just to have "multiple choices."
 
 ```typescript
-// Option 1: Remove the global array (RECOMMENDED)
+// Remove the global array entirely
 // Process buffers immediately and discard them.
-// This eliminates state and prevents any retention.
-
 async function handleUpload(fileSize: number): Promise<string> {{
   const buffer = new ArrayBuffer(fileSize);
   const result = await processBuffer(buffer);
   // Buffer goes out of scope here - eligible for GC
   return result;
 }}
-
-// Option 2: Clear array periodically (NOT RECOMMENDED)
-// Still maintains global state, could miss edge cases.
-leakedBuffers.length = 0;
 ```
 
-Use Option 1 - no global state means no retention bugs.
+This eliminates the root cause: no global array means no retention bugs. The buffer
+is created, used, and immediately becomes eligible for garbage collection when it
+goes out of scope.
+
+Alternative approaches like clearing the array periodically (`leakedBuffers.length = 0`)
+are inferior because they still maintain global state and risk retention if exceptions
+occur before cleanup.
 
 ## Data
 
@@ -517,22 +521,20 @@ hit OOM after ~{uploads_to_oom:,.0f} uploads (assuming 1GB heap limit).
 ## Fix
 
 ```typescript
-// Option 1: Remove the global array (RECOMMENDED)
-// Process buffers immediately and discard them.
+// Remove the global array entirely
 async function handleUpload(fileSize: number): Promise<string> {{
   const buffer = new ArrayBuffer(fileSize);
   const result = await processBuffer(buffer);
   // Buffer goes out of scope here - eligible for GC
   return result;
 }}
-
-// Option 2: Clear array after each request (NOT RECOMMENDED)
-// Still maintains global state, could miss edge cases.
-pendingUploads.length = 0;
 ```
 
-Recommendation: Use Option 1. Removing global state entirely prevents any retention
-bugs and makes the code easier to reason about.
+This eliminates the root cause: no global array means no retention bugs. The buffer
+is created, used, and immediately becomes eligible for garbage collection.
+
+Clearing the array periodically (`pendingUploads.length = 0`) would be inferior
+because it maintains global state and risks retention if exceptions occur before cleanup.
 
 ## Data
 
