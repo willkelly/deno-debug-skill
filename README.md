@@ -19,8 +19,8 @@ Claude becomes your debugging partner that:
 ### 1. Install the Skill
 
 ```bash
-# Copy skill to Claude's skills directory
-cp -r skill/ ~/.claude/skills/deno-debugger/
+# Copy to Claude's skills directory
+cp -r deno-debugger/ ~/.claude/skills/
 
 # Install Python dependencies
 cd ~/.claude/skills/deno-debugger/
@@ -144,7 +144,7 @@ removes them. Each upload adds ~47 KB that persists for the app lifetime.
 ## 🏗️ Architecture
 
 ```
-skill/
+deno-debugger/
 ├── SKILL.md              # Instructions Claude reads (workflow + patterns)
 ├── README.md             # Installation guide (for users)
 ├── requirements.txt      # Python dependencies
@@ -376,8 +376,8 @@ asyncio.run(investigate())
 
 ## 📚 Documentation
 
-- **`skill/SKILL.md`** - Complete workflow and patterns Claude follows
-- **`skill/README.md`** - Installation and usage guide
+- **`deno-debugger/SKILL.md`** - Complete workflow and patterns Claude follows
+- **`deno-debugger/README.md`** - Installation and usage guide
 - **`examples/scenarios/README.md`** - Interactive scenario guide
 - **`TESTING.md`** - Test suite documentation
 - **`CONTRIBUTING.md`** - Contribution guidelines
@@ -399,7 +399,7 @@ MIT License - use freely for your debugging needs!
 
 ## 🎯 Next Steps
 
-1. **Install the skill:** Copy `skill/` to `~/.claude/skills/deno-debugger/`
+1. **Install the skill:** Copy `deno-debugger/` to `~/.claude/skills/deno-debugger/`
 2. **Install dependencies:** `pip install -r requirements.txt`
 3. **Try a scenario:** Run `examples/scenarios/1_memory_leak/run.sh`
 4. **Debug your app:** Start with `--inspect` and ask Claude!

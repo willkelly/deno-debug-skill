@@ -2,12 +2,12 @@
 
 ## For Users: Installing the Skill
 
-If you just want to use the Deno debugger skill, you only need the `skill/` directory:
+If you just want to use the Deno debugger skill, you only need the `deno-debugger/` directory:
 
 ```bash
 # Clone or download
 git clone https://github.com/YOUR_USERNAME/deno-debug-skill.git
-cd deno-debug-skill/skill
+cd deno-debug-deno-debugger/skill
 
 # Install dependencies
 pip install -r requirements.txt
@@ -17,10 +17,10 @@ That's it! The skill is now available for Claude to use.
 
 ### Minimal Install (No Git)
 
-If someone sends you just the `skill/` directory:
+If someone sends you just the `deno-debugger/` directory:
 
 ```bash
-cd skill/
+cd deno-debugger/
 pip install -r requirements.txt
 ```
 
@@ -56,7 +56,7 @@ python validate.py
 - pandas, numpy (data analysis)
 - matplotlib, seaborn (visualization)
 - websockets, aiohttp (CDP connection)
-- See `skill/requirements.txt` for complete list
+- See `deno-debugger/requirements.txt` for complete list
 
 ### Development Dependencies (Developer)
 - All skill dependencies
@@ -74,7 +74,7 @@ python validate.py
 
 ### User Verification
 ```bash
-# From skill/ directory
+# From deno-debugger/ directory
 python -c "from scripts.cdp_client import CDPClient; print('✓ Skill ready')"
 ```
 
@@ -88,8 +88,8 @@ python -c "from scripts.cdp_client import CDPClient; print('✓ Skill ready')"
 ## Structure
 
 ```
-deno-debug-skill/
-├── skill/              ← Users only need this
+deno-debug-deno-debugger/
+├── deno-debugger/              ← Users only need this
 │   ├── SKILL.md
 │   ├── scripts/
 │   └── requirements.txt
@@ -108,7 +108,7 @@ See [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) for complete details.
 **Import errors:**
 ```bash
 # Make sure you're in the right directory
-cd skill/
+cd deno-debugger/
 pip install -r requirements.txt
 ```
 
@@ -132,6 +132,6 @@ deno --version
 
 ## Next Steps
 
-- **Users**: See `skill/README.md` for usage
+- **Users**: See `deno-debugger/README.md` for usage
 - **Developers**: See `TESTING.md` for testing guide
 - **Contributors**: See `CONTRIBUTING.md` for contribution guide
