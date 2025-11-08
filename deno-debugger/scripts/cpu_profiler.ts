@@ -88,7 +88,7 @@ export class CPUProfile {
   public timeDeltas: number[];
   public childrenMap: Map<number, number[]>;
   public parentMap: Map<number, number>;
-  public totalSamples: number;
+  public totalSamples: number = 0;
   public sampleCounts: Map<number, number>;
   public inclusiveSamples: Map<number, number>;
 

@@ -175,165 +175,145 @@ function checkTaskCompletion(taskId: number): boolean {
   // BUG: Checking immediately after scheduling
   // Task hasn't started yet because it's in setTimeout!
   const isComplete = task.status === "completed";
-  console.log(`Task ${taskId} complete: ${isComplete} (status: ${task.status})`);
+  console.log(
+    `Task ${taskId} complete: ${isComplete} (status: ${task.status})`,
+  );
 
   return isComplete;
 }
 
 // HTTP server
-async function startServer() {
+function startServer() {
   console.log("Starting event loop timing demo on http://localhost:8004");
   console.log("");
   console.log("Endpoints:");
   console.log("  POST /task/immediate    - Schedule with setTimeout (macrotask)");
   console.log("  POST /task/promise      - Schedule with Promise (microtask)");
-  console.log("  POST /mixed             - Mixed scheduling (shows execution order)");
-  console.log("  POST /batch             - Process multiple tasks (timing assumptions)");
+  console.log(
+    "  POST /mixed             - Mixed scheduling (shows execution order)",
+  );
+  console.log(
+    "  POST /batch             - Process multiple tasks (timing assumptions)",
+  );
   console.log("  GET  /tasks             - View task queue");
   console.log("  GET  /check/:id         - Check if task is complete");
   console.log("");
   console.log("Debugging tips:");
-  console.log("  1. Set breakpoints in setTimeout and Promise.then callbacks");
+  console.log(
+    "  1. Set breakpoints in setTimeout and Promise.then callbacks",
+  );
   console.log("  2. Watch variable: taskQueue");
   console.log("  3. Step through to see microtask vs macrotask execution");
-  console.log("  4. Watch for status changes happening in unexpected order");
+  console.log(
+    "  4. Watch for status changes happening in unexpected order",
+  );
   console.log("");
 
-  const listener = Deno.listen({ port: 8004 });
-
-  for await (const conn of listener) {
-    handleConnection(conn);
-  }
-}
-
-async function handleConnection(conn: Deno.Conn) {
-  const httpConn = Deno.serveHttp(conn);
-
-  for await (const requestEvent of httpConn) {
-    const url = new URL(requestEvent.request.url);
+  Deno.serve({ port: 8004 }, async (req) => {
+    const url = new URL(req.url);
 
     try {
-      if (
-        url.pathname === "/task/immediate" &&
-        requestEvent.request.method === "POST"
-      ) {
+      if (url.pathname === "/task/immediate" && req.method === "POST") {
         const name = url.searchParams.get("name") || `task-${Date.now()}`;
         const task = scheduleTaskImmediate(name);
 
         // Check immediately (will be pending!)
         const isComplete = checkTaskCompletion(task.id);
 
-        requestEvent.respondWith(
-          new Response(
-            JSON.stringify({
-              success: true,
-              task: {
-                id: task.id,
-                name: task.name,
-                status: task.status,
-              },
-              isComplete,
-              warning: "⚠️ Task status is 'pending' because setTimeout is a macrotask!",
-            }, null, 2),
-            {
-              status: 201,
-              headers: { "content-type": "application/json" },
+        return new Response(
+          JSON.stringify({
+            success: true,
+            task: {
+              id: task.id,
+              name: task.name,
+              status: task.status,
             },
-          ),
+            isComplete,
+            warning:
+              "⚠️ Task status is 'pending' because setTimeout is a macrotask!",
+          }, null, 2),
+          {
+            status: 201,
+            headers: { "content-type": "application/json" },
+          },
         );
-      } else if (
-        url.pathname === "/task/promise" &&
-        requestEvent.request.method === "POST"
-      ) {
+      } else if (url.pathname === "/task/promise" && req.method === "POST") {
         const name = url.searchParams.get("name") || `promise-${Date.now()}`;
         const task = await scheduleWithPromise(name);
 
-        requestEvent.respondWith(
-          new Response(
-            JSON.stringify({
-              success: true,
-              task: {
-                id: task.id,
-                name: task.name,
-                status: task.status,
-              },
-              note: "Promise microtasks executed before returning",
-            }, null, 2),
-            {
-              status: 201,
-              headers: { "content-type": "application/json" },
+        return new Response(
+          JSON.stringify({
+            success: true,
+            task: {
+              id: task.id,
+              name: task.name,
+              status: task.status,
             },
-          ),
+            note: "Promise microtasks executed before returning",
+          }, null, 2),
+          {
+            status: 201,
+            headers: { "content-type": "application/json" },
+          },
         );
-      } else if (
-        url.pathname === "/mixed" && requestEvent.request.method === "POST"
-      ) {
+      } else if (url.pathname === "/mixed" && req.method === "POST") {
         mixedTaskScheduling();
 
-        requestEvent.respondWith(
-          new Response(
-            JSON.stringify({
-              success: true,
-              message: "Mixed scheduling triggered - check console for execution order",
-            }, null, 2),
-            {
-              status: 200,
-              headers: { "content-type": "application/json" },
-            },
-          ),
+        return new Response(
+          JSON.stringify({
+            success: true,
+            message:
+              "Mixed scheduling triggered - check console for execution order",
+          }, null, 2),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
         );
-      } else if (
-        url.pathname === "/batch" && requestEvent.request.method === "POST"
-      ) {
+      } else if (url.pathname === "/batch" && req.method === "POST") {
         const count = parseInt(url.searchParams.get("count") || "3");
         const taskNames = Array.from({ length: count }, (_, i) =>
           `batch-task-${i + 1}`);
 
         await processTasksInOrder(taskNames);
 
-        requestEvent.respondWith(
-          new Response(
-            JSON.stringify({
-              success: true,
-              scheduled: count,
-              message: "Tasks scheduled, but completion timing is unpredictable!",
-            }, null, 2),
-            {
-              status: 200,
-              headers: { "content-type": "application/json" },
-            },
-          ),
+        return new Response(
+          JSON.stringify({
+            success: true,
+            scheduled: count,
+            message: "Tasks scheduled, but completion timing is unpredictable!",
+          }, null, 2),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
         );
       } else if (url.pathname === "/tasks") {
-        requestEvent.respondWith(
-          new Response(
-            JSON.stringify({
-              tasks: taskQueue,
-              count: taskQueue.length,
-            }, null, 2),
-            {
-              status: 200,
-              headers: { "content-type": "application/json" },
-            },
-          ),
+        return new Response(
+          JSON.stringify({
+            tasks: taskQueue,
+            count: taskQueue.length,
+          }, null, 2),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
         );
       } else if (url.pathname.startsWith("/check/")) {
         const taskId = parseInt(url.pathname.split("/")[2]);
         const isComplete = checkTaskCompletion(taskId);
         const task = taskQueue.find((t) => t.id === taskId);
 
-        requestEvent.respondWith(
-          new Response(
-            JSON.stringify({
-              taskId,
-              task: task || null,
-              isComplete,
-            }, null, 2),
-            {
-              status: 200,
-              headers: { "content-type": "application/json" },
-            },
-          ),
+        return new Response(
+          JSON.stringify({
+            taskId,
+            task: task || null,
+            isComplete,
+          }, null, 2),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
         );
       } else {
         const body = `
@@ -385,22 +365,21 @@ curl 'http://localhost:8004/check/1'
 </html>
         `;
 
-        requestEvent.respondWith(
-          new Response(body, {
-            status: 200,
-            headers: { "content-type": "text/html" },
-          }),
-        );
+        return new Response(body, {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        });
       }
     } catch (error) {
-      requestEvent.respondWith(
-        new Response(JSON.stringify({ error: String(error) }), {
+      return new Response(
+        JSON.stringify({ error: String(error) }),
+        {
           status: 500,
           headers: { "content-type": "application/json" },
-        }),
+        },
       );
     }
-  }
+  });
 }
 
 // Start the server

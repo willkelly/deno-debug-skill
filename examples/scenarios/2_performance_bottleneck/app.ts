@@ -45,7 +45,7 @@ function expensiveComputation(limit: number): number[] {
 }
 
 // HTTP server
-async function startServer() {
+function startServer() {
   console.log("Starting slow API server on http://localhost:8001");
   console.log("");
   console.log("Endpoints:");
@@ -58,18 +58,8 @@ async function startServer() {
   console.log("");
   console.log("Then ask Claude to profile and find the bottlenecks!");
 
-  const listener = Deno.listen({ port: 8001 });
-
-  for await (const conn of listener) {
-    handleConnection(conn);
-  }
-}
-
-async function handleConnection(conn: Deno.Conn) {
-  const httpConn = Deno.serveHttp(conn);
-
-  for await (const requestEvent of httpConn) {
-    const url = new URL(requestEvent.request.url);
+  Deno.serve({ port: 8001 }, (req) => {
+    const url = new URL(req.url);
     const start = performance.now();
 
     try {
@@ -90,27 +80,21 @@ async function handleConnection(conn: Deno.Conn) {
           sample: primes.slice(0, 10),
           message: duration > 1000
             ? "⚠️ This is slow! Ask Claude to profile it."
-            : "Response time OK"
+            : "Response time OK",
         }, null, 2);
 
-        requestEvent.respondWith(
-          new Response(body, {
-            status: 200,
-            headers: { "content-type": "application/json" },
-          })
-        );
-
+        return new Response(body, {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
       } else if (url.pathname === "/fibonacci") {
         const n = parseInt(url.searchParams.get("n") || "30");
 
         if (n > 45) {
-          requestEvent.respondWith(
-            new Response(JSON.stringify({ error: "n too large (max 45)" }), {
-              status: 400,
-              headers: { "content-type": "application/json" },
-            })
-          );
-          continue;
+          return new Response(JSON.stringify({ error: "n too large (max 45)" }), {
+            status: 400,
+            headers: { "content-type": "application/json" },
+          });
         }
 
         console.log(`[${new Date().toISOString()}] Computing fibonacci(${n})...`);
@@ -126,24 +110,18 @@ async function handleConnection(conn: Deno.Conn) {
           duration_ms: duration.toFixed(2),
           message: duration > 500
             ? "⚠️ Exponential time complexity! Ask Claude to find the issue."
-            : "Response time OK"
+            : "Response time OK",
         }, null, 2);
 
-        requestEvent.respondWith(
-          new Response(body, {
-            status: 200,
-            headers: { "content-type": "application/json" },
-          })
-        );
-
+        return new Response(body, {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
       } else if (url.pathname === "/health") {
-        requestEvent.respondWith(
-          new Response(JSON.stringify({ status: "ok" }), {
-            status: 200,
-            headers: { "content-type": "application/json" },
-          })
-        );
-
+        return new Response(JSON.stringify({ status: "ok" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
       } else {
         const body = `
           <html>
@@ -170,19 +148,15 @@ async function handleConnection(conn: Deno.Conn) {
           </html>
         `;
 
-        requestEvent.respondWith(
-          new Response(body, {
-            status: 200,
-            headers: { "content-type": "text/html" },
-          })
-        );
+        return new Response(body, {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        });
       }
     } catch (error) {
-      requestEvent.respondWith(
-        new Response(`Error: ${error}`, { status: 500 })
-      );
+      return new Response(`Error: ${error}`, { status: 500 });
     }
-  }
+  });
 }
 
 // Start the server
