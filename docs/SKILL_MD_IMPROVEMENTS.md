@@ -226,10 +226,43 @@ Add this cleanup after processing:
 - Explain WHY it's happening, not just WHAT
 - Provide a specific, actionable fix
 
+### 10. Report Quality Improvements
+
+**Issue**: Template-driven reports were repetitive and vague. Each section restated the same information without adding depth.
+
+**Fix**: Added content quality guidance to Step 6:
+
+**Key principles:**
+1. Each section answers a DIFFERENT question:
+   - Summary: "What's broken?"
+   - Root Cause: "WHY is it broken?" (mechanism)
+   - Details: "What ELSE did you learn?" (evidence, code, impact)
+   - Fix: "What's the solution and WHY does it work?"
+
+2. Show your work:
+   - Include code snippets (not just line numbers)
+   - Explain anti-patterns
+   - Be specific: "~47KB/upload = OOM after 22,543 uploads" not "grows over time"
+   - Calculate production impact
+
+3. Fix section should be confident:
+   - Show THE best solution with reasoning
+   - Only show alternatives if they have legitimate trade-offs
+   - Don't present "Option 1 (RECOMMENDED)" vs "Option 2 (NOT RECOMMENDED)"
+
+**Result**: Reports now provide:
+- Code context (showing lines 12-24 with annotations)
+- Named anti-patterns ("retain-and-forget")
+- Production impact calculations ("225 hours to OOM")
+- Confident, reasoned recommendations
+- Each section adds NEW information
+
 ## Files Changed
 
 - `skill/SKILL.md` - Complete rewrite (385 insertions, 233 deletions)
 - `skill/SKILL.md` - Output format improvements (+225, -110)
+- `skill/SKILL.md` - Report quality guidance (+100, -23)
+- `skill/SKILL.md` - Fix section simplification (+19, -17)
 
 ## Impact
 
@@ -238,6 +271,8 @@ This should prevent Claude from:
 - Parsing heap snapshots manually
 - Recreating infrastructure that already exists
 - Using breadcrumbs excessively for routine actions
+- Generating repetitive, template-driven reports
+- Showing inferior alternatives as "options"
 
 And encourage Claude to:
 - Follow the numbered workflow
@@ -245,3 +280,5 @@ And encourage Claude to:
 - Track investigation milestones with breadcrumbs (sparingly)
 - Save artifacts in Markdown format
 - Present findings conversationally
+- Generate high-quality, evidence-based reports with specific impact analysis
+- Provide confident, reasoned recommendations
