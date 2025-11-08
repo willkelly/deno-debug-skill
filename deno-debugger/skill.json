@@ -1,0 +1,40 @@
+{
+  "name": "deno-debugger",
+  "version": "1.0.0",
+  "description": "Interactive debugger for Deno/TypeScript applications using the V8 Inspector Protocol",
+  "author": "Claude Code Community",
+  "license": "MIT",
+  "tags": [
+    "debugging",
+    "deno",
+    "typescript",
+    "v8",
+    "inspector",
+    "memory-leak",
+    "performance",
+    "profiling"
+  ],
+  "runtime": "deno",
+  "minDenoVersion": "2.0.0",
+  "dependencies": [],
+  "files": {
+    "skill": "SKILL.md",
+    "readme": "README.md",
+    "scripts": "scripts/"
+  },
+  "capabilities": [
+    "memory-leak-detection",
+    "cpu-profiling",
+    "heap-snapshot-analysis",
+    "breakpoint-debugging",
+    "performance-analysis",
+    "race-condition-detection"
+  ],
+  "entryPoints": {
+    "cdpClient": "scripts/cdp_client.ts",
+    "heapAnalyzer": "scripts/heap_analyzer.ts",
+    "cpuProfiler": "scripts/cpu_profiler.ts",
+    "breadcrumbs": "scripts/breadcrumbs.ts",
+    "reportGen": "scripts/report_gen.ts"
+  }
+}

@@ -1,13 +1,5 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-env/
-venv/
-.venv/
-*.egg-info/
+# Dependencies (kept for backwards compatibility if needed)
+node_modules/
 dist/
 build/
 
