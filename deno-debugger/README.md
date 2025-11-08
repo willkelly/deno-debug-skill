@@ -66,8 +66,7 @@ See the parent directory's README.md for full documentation and examples.
   - `heap_analyzer.py` - Heap snapshot analysis
   - `cpu_profiler.py` - CPU profiling
   - `breadcrumbs.py` - Investigation tracking
-  - `visualize.py` - Flamegraphs and charts
-  - `org_report.py` - Report generation
+  - `org_report.py` - Report generation (optional/legacy)
 - `requirements.txt` - Python dependencies
 
 ## For Developers
