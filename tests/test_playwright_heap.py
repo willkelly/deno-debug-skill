@@ -7,14 +7,15 @@ This test uses Playwright to:
 3. Identify why HeapProfiler.addHeapSnapshotChunk events aren't being captured
 """
 
-import pytest
 import asyncio
 import json
 import sys
 from pathlib import Path
 
+import pytest
+
 # Add skill scripts to path
-scripts_path = Path(__file__).parent.parent / 'skill' / 'scripts'
+scripts_path = Path(__file__).parent.parent / "skill" / "scripts"
 sys.path.insert(0, str(scripts_path))
 
 from cdp_client import CDPClient
@@ -29,11 +30,11 @@ async def test_heap_snapshot_with_raw_websocket():
     Test heap snapshot by directly monitoring WebSocket messages.
     This helps identify if chunks are being sent but not captured by our handler.
     """
-    import websockets
-    import aiohttp
-
     # Start a simple Deno process to debug
     import subprocess
+
+    import aiohttp
+    import websockets
 
     # Create a simple Deno script to profile
     test_script = """
@@ -58,7 +59,7 @@ async def test_heap_snapshot_with_raw_websocket():
     proc = subprocess.Popen(
         ["deno", "run", "--inspect-brk=127.0.0.1:9229", str(script_path)],
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE
+        stderr=subprocess.PIPE,
     )
 
     try:
@@ -67,9 +68,9 @@ async def test_heap_snapshot_with_raw_websocket():
 
         # Get WebSocket URL
         async with aiohttp.ClientSession() as session:
-            async with session.get('http://127.0.0.1:9229/json') as resp:
+            async with session.get("http://127.0.0.1:9229/json") as resp:
                 targets = await resp.json()
-                ws_url = targets[0]['webSocketDebuggerUrl']
+                ws_url = targets[0]["webSocketDebuggerUrl"]
 
         print(f"WebSocket URL: {ws_url}")
 
@@ -89,29 +90,37 @@ async def test_heap_snapshot_with_raw_websocket():
                     data = json.loads(message)
 
                     # Log ALL messages for debugging
-                    if 'method' in data:
-                        method = data['method']
+                    if "method" in data:
+                        method = data["method"]
                         all_events.append(method)
                         print(f"  [EVENT] {method}")
 
                         # Capture chunk events
-                        if 'HeapProfiler.addHeapSnapshotChunk' in method:
+                        if "HeapProfiler.addHeapSnapshotChunk" in method:
                             chunk_events.append(data)
-                            print(f"  [CHUNK] Captured chunk event! Size: {len(data.get('params', {}).get('chunk', ''))}")
+                            print(
+                                f"  [CHUNK] Captured chunk event! Size: {len(data.get('params', {}).get('chunk', ''))}"
+                            )
 
                         # Capture progress events
-                        if 'HeapProfiler.reportHeapSnapshotProgress' in method:
+                        if "HeapProfiler.reportHeapSnapshotProgress" in method:
                             progress_events.append(data)
-                            params = data.get('params', {})
-                            print(f"  [PROGRESS] {params.get('done', 0)}/{params.get('total', 0)}")
+                            params = data.get("params", {})
+                            print(
+                                f"  [PROGRESS] {params.get('done', 0)}/{params.get('total', 0)}"
+                            )
 
-                    elif 'id' in data:
+                    elif "id" in data:
                         # Command response
                         all_responses.append(data)
-                        if 'error' in data:
-                            print(f"  [ERROR] Command {data['id']} failed: {data['error']}")
+                        if "error" in data:
+                            print(
+                                f"  [ERROR] Command {data['id']} failed: {data['error']}"
+                            )
                         else:
-                            print(f"  [RESPONSE] Command {data['id']} succeeded: {data.get('result', {})}")
+                            print(
+                                f"  [RESPONSE] Command {data['id']} succeeded: {data.get('result', {})}"
+                            )
             except websockets.exceptions.ConnectionClosed:
                 pass
 
@@ -119,32 +128,36 @@ async def test_heap_snapshot_with_raw_websocket():
         monitor_task = asyncio.create_task(message_monitor())
 
         # Enable Runtime and Debugger
-        await ws.send(json.dumps({'id': msg_id, 'method': 'Runtime.enable'}))
+        await ws.send(json.dumps({"id": msg_id, "method": "Runtime.enable"}))
         msg_id += 1
         await asyncio.sleep(0.1)
 
-        await ws.send(json.dumps({'id': msg_id, 'method': 'Debugger.enable'}))
+        await ws.send(json.dumps({"id": msg_id, "method": "Debugger.enable"}))
         msg_id += 1
         await asyncio.sleep(0.1)
 
         # Resume execution
-        await ws.send(json.dumps({'id': msg_id, 'method': 'Debugger.resume'}))
+        await ws.send(json.dumps({"id": msg_id, "method": "Debugger.resume"}))
         msg_id += 1
         await asyncio.sleep(0.5)
 
         # Enable HeapProfiler
-        await ws.send(json.dumps({'id': msg_id, 'method': 'HeapProfiler.enable'}))
+        await ws.send(json.dumps({"id": msg_id, "method": "HeapProfiler.enable"}))
         msg_id += 1
         await asyncio.sleep(0.1)
 
         print("\n[TEST] Requesting heap snapshot...")
 
         # Request heap snapshot WITH progress reporting
-        await ws.send(json.dumps({
-            'id': msg_id,
-            'method': 'HeapProfiler.takeHeapSnapshot',
-            'params': {'reportProgress': True}
-        }))
+        await ws.send(
+            json.dumps(
+                {
+                    "id": msg_id,
+                    "method": "HeapProfiler.takeHeapSnapshot",
+                    "params": {"reportProgress": True},
+                }
+            )
+        )
         msg_id += 1
 
         # Wait for snapshot to complete
@@ -156,9 +169,9 @@ async def test_heap_snapshot_with_raw_websocket():
         monitor_task.cancel()
 
         # Analyze results
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("ANALYSIS RESULTS")
-        print("="*60)
+        print("=" * 60)
         print(f"Total command responses: {len(all_responses)}")
         print(f"Total unique event types received: {len(set(all_events))}")
         print(f"All event types: {set(all_events)}")
@@ -166,23 +179,31 @@ async def test_heap_snapshot_with_raw_websocket():
         print(f"Chunk events received: {len(chunk_events)}")
 
         # Check for errors in responses
-        errors = [r for r in all_responses if 'error' in r]
+        errors = [r for r in all_responses if "error" in r]
         if errors:
             print(f"\n⚠️  Command errors found:")
             for err in errors:
                 print(f"  - Command {err['id']}: {err['error']}")
 
         if chunk_events:
-            total_chunk_size = sum(len(e.get('params', {}).get('chunk', '')) for e in chunk_events)
+            total_chunk_size = sum(
+                len(e.get("params", {}).get("chunk", "")) for e in chunk_events
+            )
             print(f"Total chunk data size: {total_chunk_size:,} bytes")
-            print(f"\nFirst chunk preview: {chunk_events[0].get('params', {}).get('chunk', '')[:100]}...")
+            print(
+                f"\nFirst chunk preview: {chunk_events[0].get('params', {}).get('chunk', '')[:100]}..."
+            )
         else:
             print("\n⚠️  WARNING: No chunk events received!")
-            print("This confirms the bug - chunks are not being sent by Deno's V8 inspector")
+            print(
+                "This confirms the bug - chunks are not being sent by Deno's V8 inspector"
+            )
 
         if progress_events:
-            last_progress = progress_events[-1].get('params', {})
-            print(f"\nFinal progress: {last_progress.get('done', 0)}/{last_progress.get('total', 0)}")
+            last_progress = progress_events[-1].get("params", {})
+            print(
+                f"\nFinal progress: {last_progress.get('done', 0)}/{last_progress.get('total', 0)}"
+            )
             print(f"Finished flag: {last_progress.get('finished', False)}")
 
         # Assertions
@@ -191,7 +212,9 @@ async def test_heap_snapshot_with_raw_websocket():
 
         # This is the bug we're investigating
         if len(chunk_events) == 0:
-            pytest.skip("Heap snapshot chunks not received - this is the known bug we're debugging")
+            pytest.skip(
+                "Heap snapshot chunks not received - this is the known bug we're debugging"
+            )
 
     finally:
         proc.kill()
@@ -219,7 +242,7 @@ async def test_compare_our_client_vs_raw():
     proc = subprocess.Popen(
         ["deno", "run", "--inspect-brk=127.0.0.1:9230", str(script_path)],
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE
+        stderr=subprocess.PIPE,
     )
 
     try:
@@ -227,7 +250,7 @@ async def test_compare_our_client_vs_raw():
 
         # Test with our CDPClient
         print("\n[TEST 1] Using our CDPClient...")
-        client = CDPClient('127.0.0.1', 9230)
+        client = CDPClient("127.0.0.1", 9230)
         await client.connect()
         await client.enable_debugger()
         await client.resume()
@@ -239,7 +262,9 @@ async def test_compare_our_client_vs_raw():
         await client.close()
 
         if len(snapshot_data) == 0:
-            print("⚠️  Our client also received 0 bytes - issue is not in our implementation")
+            print(
+                "⚠️  Our client also received 0 bytes - issue is not in our implementation"
+            )
             pytest.skip("Heap snapshot issue confirmed with our client")
         else:
             print("✓ Our client successfully received snapshot data!")
@@ -256,11 +281,11 @@ async def test_heap_snapshot_with_node():
     Test heap snapshot with Node.js instead of Deno.
     This helps determine if the issue is specific to Deno or affects all V8 runtimes.
     """
-    import subprocess
     import shutil
+    import subprocess
 
     # Check if node is available
-    if not shutil.which('node'):
+    if not shutil.which("node"):
         pytest.skip("Node.js not available")
 
     # Create test Node.js script
@@ -281,14 +306,14 @@ async def test_heap_snapshot_with_node():
     proc = subprocess.Popen(
         ["node", "--inspect-brk=127.0.0.1:9231", str(script_path)],
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE
+        stderr=subprocess.PIPE,
     )
 
     try:
         await asyncio.sleep(2)
 
         # Connect with our client
-        client = CDPClient('127.0.0.1', 9231)
+        client = CDPClient("127.0.0.1", 9231)
         await client.connect()
         await client.enable_debugger()
         await client.resume()
@@ -312,7 +337,7 @@ async def test_heap_snapshot_with_node():
         proc.wait()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     print("Playwright Heap Snapshot Debugging Tests")
     print("=" * 60)
     print("\nRun with: pytest tests/test_playwright_heap.py -v -s")

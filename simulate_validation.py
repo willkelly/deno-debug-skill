@@ -10,12 +10,12 @@ import sys
 
 
 class Colors:
-    GREEN = '\033[92m'
-    RED = '\033[91m'
-    YELLOW = '\033[93m'
-    BLUE = '\033[94m'
-    BOLD = '\033[1m'
-    END = '\033[0m'
+    GREEN = "\033[92m"
+    RED = "\033[91m"
+    YELLOW = "\033[93m"
+    BLUE = "\033[94m"
+    BOLD = "\033[1m"
+    END = "\033[0m"
 
 
 def print_step(name):
@@ -35,8 +35,12 @@ def main():
     print("Deno Debugger Skill Validation (Simulated)")
     print(f"{'='*60}{Colors.END}\n")
 
-    print(f"{Colors.YELLOW}⚠️  This is a SIMULATION. No actual Deno testing.{Colors.END}")
-    print(f"{Colors.YELLOW}   Run 'python validate.py' with Deno installed for real tests.{Colors.END}\n")
+    print(
+        f"{Colors.YELLOW}⚠️  This is a SIMULATION. No actual Deno testing.{Colors.END}"
+    )
+    print(
+        f"{Colors.YELLOW}   Run 'python validate.py' with Deno installed for real tests.{Colors.END}\n"
+    )
 
     # Step 1: Check Deno
     print_step("Checking for Deno")
@@ -44,18 +48,20 @@ def main():
 
     # Step 2: Start Deno
     print_step("Starting Deno: examples/leaky_app.ts")
-    print_info("Command: deno run --inspect=127.0.0.1:9229 --allow-net examples/leaky_app.ts")
+    print_info(
+        "Command: deno run --inspect=127.0.0.1:9229 --allow-net examples/leaky_app.ts"
+    )
     print_success("Deno started (PID: 12345)")
     print_info("Inspector listening on ws://127.0.0.1:9229/...")
 
     # Step 3: CDP Connection
     print_step("Testing CDP connection")
     print_info("GET http://127.0.0.1:9229/json")
-    print_info("Response: [{\"webSocketDebuggerUrl\": \"ws://...\"}]")
+    print_info('Response: [{"webSocketDebuggerUrl": "ws://..."}]')
     print_success("Connected to CDP")
     print_info("WebSocket connected to inspector")
     print_success("Debugger enabled")
-    print_info("Sent: {\"method\": \"Debugger.enable\"}")
+    print_info('Sent: {"method": "Debugger.enable"}')
 
     # Step 4: Breakpoints
     print_step("Testing breakpoints")
@@ -65,7 +71,7 @@ def main():
 
     # Step 5: Heap Snapshot
     print_step("Testing heap snapshot capture")
-    print_info("Sent: {\"method\": \"HeapProfiler.takeHeapSnapshot\"}")
+    print_info('Sent: {"method": "HeapProfiler.takeHeapSnapshot"}')
     print_info("Receiving snapshot chunks...")
     print_success("Snapshot captured (2,456,789 bytes)")
     print_success("Saved to data/validation_snapshot.heapsnapshot")
@@ -139,5 +145,5 @@ def main():
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

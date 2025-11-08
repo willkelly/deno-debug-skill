@@ -114,7 +114,9 @@ jobs:
     - name: Lint with flake8
       run: |
         # Stop on errors, ignore line length (handled by black)
-        flake8 skill/scripts/ tests/ validate.py simulate_validation.py --max-line-length=120 --extend-ignore=E203,W503
+        # E402: module imports not at top (expected in test files that modify sys.path)
+        # F541: f-string without placeholders (for print statements)
+        flake8 skill/scripts/ tests/ validate.py simulate_validation.py --max-line-length=120 --extend-ignore=E203,W503,E402,F541
 
   type-check:
     name: Type Checking

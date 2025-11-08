@@ -5,22 +5,23 @@ These tests require Deno to be installed. Run with:
     pytest tests/test_integration_cdp.py -v
 """
 
-import pytest
 import asyncio
-import subprocess
-import time
 import signal
+import subprocess
 import sys
+import time
 from pathlib import Path
 
+import pytest
+
 # Add scripts to path
-sys.path.insert(0, str(Path(__file__).parent.parent / 'skill' / 'scripts'))
+sys.path.insert(0, str(Path(__file__).parent.parent / "skill" / "scripts"))
 
 from cdp_client import CDPClient
 
 # Skip all tests if Deno not available
 try:
-    subprocess.run(['deno', '--version'], capture_output=True, check=True)
+    subprocess.run(["deno", "--version"], capture_output=True, check=True)
     DENO_AVAILABLE = True
 except (FileNotFoundError, subprocess.CalledProcessError):
     DENO_AVAILABLE = False
@@ -39,9 +40,9 @@ async def deno_process():
 
     # Start Deno with inspector
     proc = subprocess.Popen(
-        ['deno', 'eval', '--inspect=127.0.0.1:9229', '--allow-net', script],
+        ["deno", "eval", "--inspect=127.0.0.1:9229", "--allow-net", script],
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE
+        stderr=subprocess.PIPE,
     )
 
     # Wait for inspector to be ready
@@ -60,7 +61,7 @@ async def deno_process():
 @pytest.mark.asyncio
 async def test_cdp_connection(deno_process):
     """Test basic CDP connection to Deno."""
-    client = CDPClient('127.0.0.1', 9229)
+    client = CDPClient("127.0.0.1", 9229)
 
     await client.connect()
     assert client.ws is not None
@@ -71,7 +72,7 @@ async def test_cdp_connection(deno_process):
 @pytest.mark.asyncio
 async def test_enable_debugger(deno_process):
     """Test enabling the debugger domain."""
-    client = CDPClient('127.0.0.1', 9229)
+    client = CDPClient("127.0.0.1", 9229)
     await client.connect()
 
     await client.enable_debugger()
@@ -83,15 +84,12 @@ async def test_enable_debugger(deno_process):
 @pytest.mark.asyncio
 async def test_breakpoint_operations(deno_process):
     """Test setting and removing breakpoints."""
-    client = CDPClient('127.0.0.1', 9229)
+    client = CDPClient("127.0.0.1", 9229)
     await client.connect()
     await client.enable_debugger()
 
     # Set breakpoint by URL pattern
-    bp_id = await client.set_breakpoint_by_url(
-        url_regex='.*',
-        line=1
-    )
+    bp_id = await client.set_breakpoint_by_url(url_regex=".*", line=1)
 
     assert bp_id is not None
     assert isinstance(bp_id, str)
@@ -106,7 +104,7 @@ async def test_breakpoint_operations(deno_process):
 @pytest.mark.timeout(30)
 async def test_heap_snapshot_basic(deno_process):
     """Test basic heap snapshot capture (without full parsing)."""
-    client = CDPClient('127.0.0.1', 9229)
+    client = CDPClient("127.0.0.1", 9229)
     await client.connect()
 
     # Try to capture snapshot
@@ -118,8 +116,9 @@ async def test_heap_snapshot_basic(deno_process):
 
     # Should be valid JSON
     import json
+
     data = json.loads(snapshot_json)
-    assert 'snapshot' in data or 'nodes' in data
+    assert "snapshot" in data or "nodes" in data
 
     await client.close()
 
@@ -128,7 +127,7 @@ async def test_heap_snapshot_basic(deno_process):
 @pytest.mark.timeout(30)
 async def test_cpu_profiling(deno_process):
     """Test CPU profiling start/stop."""
-    client = CDPClient('127.0.0.1', 9229)
+    client = CDPClient("127.0.0.1", 9229)
     await client.connect()
 
     await client.start_profiling()
@@ -139,7 +138,7 @@ async def test_cpu_profiling(deno_process):
     profile_data = await client.stop_profiling()
 
     assert profile_data is not None
-    assert 'nodes' in profile_data
+    assert "nodes" in profile_data
 
     await client.close()
 
@@ -147,15 +146,15 @@ async def test_cpu_profiling(deno_process):
 @pytest.mark.asyncio
 async def test_evaluate_expression(deno_process):
     """Test evaluating expressions in global context."""
-    client = CDPClient('127.0.0.1', 9229)
+    client = CDPClient("127.0.0.1", 9229)
     await client.connect()
     await client.enable_debugger()
 
     # Evaluate a simple expression
-    result = await client.evaluate('1 + 1')
+    result = await client.evaluate("1 + 1")
 
     assert result is not None
-    assert 'value' in result
-    assert result['value'] == 2
+    assert "value" in result
+    assert result["value"] == 2
 
     await client.close()
