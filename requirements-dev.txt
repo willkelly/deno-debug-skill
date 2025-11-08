@@ -2,7 +2,7 @@
 # Install with: pip install -r requirements-dev.txt
 
 # Include all skill dependencies
--r skill/requirements.txt
+-r deno-debugger/requirements.txt
 
 # Testing
 pytest>=7.4.0

@@ -22,7 +22,7 @@ help:
 # User: Install just the skill
 install-skill:
 	@echo "Installing Deno Debugger Skill..."
-	cd skill && pip install -r requirements.txt
+	cd deno-debugger && pip install -r requirements.txt
 	@echo "✓ Skill installed!"
 
 # Developer: Install everything
@@ -55,18 +55,18 @@ validate:
 # Code formatting
 format:
 	@echo "Formatting with black..."
-	black skill/scripts/ tests/ validate.py
+	black deno-debugger/scripts/ tests/ validate.py
 	@echo "Sorting imports..."
-	isort skill/scripts/ tests/ validate.py
+	isort deno-debugger/scripts/ tests/ validate.py
 
 # Linting
 lint:
 	@echo "Running flake8..."
-	flake8 skill/scripts/ tests/ validate.py --max-line-length=120 --extend-ignore=E203,W503
+	flake8 deno-debugger/scripts/ tests/ validate.py --max-line-length=120 --extend-ignore=E203,W503
 	@echo "Checking code format..."
-	black --check skill/scripts/ tests/ validate.py
+	black --check deno-debugger/scripts/ tests/ validate.py
 	@echo "Checking import order..."
-	isort --check-only skill/scripts/ tests/ validate.py
+	isort --check-only deno-debugger/scripts/ tests/ validate.py
 
 # Clean up
 clean:
@@ -81,5 +81,5 @@ clean:
 # Package the skill for distribution
 package:
 	@echo "Packaging skill..."
-	cd skill && tar -czf ../deno-debugger-skill.tar.gz .
+	cd deno-debugger && tar -czf ../deno-debugger-skill.tar.gz .
 	@echo "✓ Created deno-debugger-skill.tar.gz"

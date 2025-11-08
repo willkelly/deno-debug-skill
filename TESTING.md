@@ -36,10 +36,10 @@ pytest tests/ -v
 - ✅ Analysis functions (with mock data)
 
 **Coverage:**
-- `scripts/breadcrumbs.py` - Full coverage
-- `scripts/heap_analyzer.py` - Parser logic
-- `scripts/cpu_profiler.py` - Parser logic
-- `scripts/org_report.py` - (TODO)
+- `deno-debugger/scripts/breadcrumbs.py` - Full coverage
+- `deno-debugger/scripts/heap_analyzer.py` - Parser logic
+- `deno-debugger/scripts/cpu_profiler.py` - Parser logic
+- `deno-debugger/scripts/org_report.py` - (TODO)
 
 ### 2. Integration Tests (validate.py)
 
@@ -241,16 +241,16 @@ Run the same checks that CI runs:
 
 ```bash
 # Code formatting
-black --check scripts/ tests/ validate.py
+black --check deno-debugger/scripts/ tests/ validate.py
 
 # Import sorting
-isort --check-only scripts/ tests/ validate.py
+isort --check-only deno-debugger/scripts/ tests/ validate.py
 
 # Linting
-flake8 scripts/ tests/ validate.py --max-line-length=120
+flake8 deno-debugger/scripts/ tests/ validate.py --max-line-length=120
 
 # Type checking
-mypy scripts/ --ignore-missing-imports
+mypy deno-debugger/scripts/ --ignore-missing-imports
 
 # Unit tests
 pytest tests/ -v
