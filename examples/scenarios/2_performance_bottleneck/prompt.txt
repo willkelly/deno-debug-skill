@@ -1,9 +1,13 @@
-My API responses are very slow, especially for certain endpoints.
-
-Can you profile the application and identify the performance bottlenecks?
+My API is really slow and I can't figure out why. The /primes endpoint takes forever to respond, even for relatively small requests. Users are complaining about timeouts.
 
 The app is running on http://localhost:8001 with these endpoints:
-- GET /primes?limit=50000  (very slow)
-- GET /fibonacci?n=40      (very slow)
+  GET /primes?limit=10000  - Find primes up to limit (this is the slow one)
+  GET /fibonacci?n=35      - Calculate fibonacci number (also slow)
+  GET /health              - Health check (this one's fine)
 
-I've started it with --inspect on port 9229.
+I thought it might be database queries, but we're not even using a database here - it's just computation. Can you profile this and figure out what's taking so long?
+
+Example slow request:
+  curl 'http://localhost:8001/primes?limit=50000'
+
+(I've started the app with --inspect on port 9229)
