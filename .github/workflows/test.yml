@@ -7,44 +7,51 @@ on:
     branches: [ main, develop ]
 
 jobs:
-  unit-tests:
-    name: Unit Tests (Python ${{ matrix.python-version }})
+  lint-and-format:
+    name: Lint and Format Check
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.9", "3.10", "3.11"]
 
     steps:
     - uses: actions/checkout@v4
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
+    - name: Setup Deno
+      uses: denoland/setup-deno@v1
       with:
-        python-version: ${{ matrix.python-version }}
+        deno-version: v2.x
 
-    - name: Cache pip packages
-      uses: actions/cache@v3
+    - name: Check formatting
+      run: |
+        cd deno-debugger
+        deno fmt --check
+
+    - name: Lint code
+      run: |
+        cd deno-debugger
+        deno lint
+
+  type-check:
+    name: Type Check
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Deno
+      uses: denoland/setup-deno@v1
       with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('requirements-dev.txt') }}
-        restore-keys: |
-          ${{ runner.os }}-pip-
+        deno-version: v2.x
 
-    - name: Install dependencies
+    - name: Type check all scripts
       run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements-dev.txt
+        cd deno-debugger/scripts
+        deno check *.ts
 
-    - name: Run unit tests
-      run: |
-        pytest tests/test_breadcrumbs.py tests/test_heap_parser.py tests/test_cpu_parser.py -v --tb=short
-
-  integration-tests:
-    name: Integration Tests (Deno ${{ matrix.deno-version }})
+  unit-tests:
+    name: Unit Tests (Deno ${{ matrix.deno-version }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        deno-version: ["v1.x", "v2.x"]  # Test latest of each major version
+        deno-version: ["v1.x", "v2.x"]
 
     steps:
     - uses: actions/checkout@v4
@@ -54,88 +61,96 @@ jobs:
       with:
         deno-version: ${{ matrix.deno-version }}
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
+    - name: Cache Deno dependencies
+      uses: actions/cache@v3
       with:
-        python-version: "3.11"
+        path: ~/.cache/deno
+        key: ${{ runner.os }}-deno-${{ hashFiles('deno-debugger/deno.json') }}
+        restore-keys: |
+          ${{ runner.os }}-deno-
 
-    - name: Install Python dependencies
+    - name: Run tests
       run: |
-        python -m pip install --upgrade pip
-        pip install -r deno-debugger/requirements.txt
+        cd deno-debugger
+        deno task test
+      timeout-minutes: 5
+
+  integration-tests:
+    name: Integration Tests (Deno ${{ matrix.deno-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        deno-version: ["v1.x", "v2.x"]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Deno
+      uses: denoland/setup-deno@v1
+      with:
+        deno-version: ${{ matrix.deno-version }}
 
     - name: Create output directories
       run: |
         mkdir -p data output
 
-    - name: Run validation tests
+    - name: Start test Deno app with inspector
       run: |
-        python validate.py
-      timeout-minutes: 5
-      continue-on-error: true  # Allow validation failures in CI
+        # Start a simple Deno HTTP server with --inspect
+        cd examples/scenarios/1_memory_leak
+        deno run --inspect=127.0.0.1:9229 --allow-net app.ts &
+        DENO_PID=$!
+        echo "DENO_PID=$DENO_PID" >> $GITHUB_ENV
+        # Wait for inspector to be ready
+        sleep 2
+      continue-on-error: true
 
-    - name: Upload validation artifacts
+    - name: Test CDP connection
+      run: |
+        cd deno-debugger/scripts
+        # Simple connection test
+        deno run --allow-net cdp_client.ts
+      continue-on-error: true
+      timeout-minutes: 2
+
+    - name: Cleanup
+      if: always()
+      run: |
+        if [ ! -z "$DENO_PID" ]; then
+          kill $DENO_PID || true
+        fi
+
+    - name: Upload test artifacts
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: validation-artifacts-deno-${{ matrix.deno-version }}
+        name: test-artifacts-deno-${{ matrix.deno-version }}
         path: |
-          data/validation_*.heapsnapshot
-          data/validation_*.cpuprofile
-          data/validation_*.json
-          output/validation_*.png
-          output/validation_*.org
+          data/*.heapsnapshot
+          data/*.cpuprofile
+          data/*.json
+          output/*.md
         retention-days: 7
 
-  lint:
-    name: Code Quality
+  validate-examples:
+    name: Validate Example Scenarios
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
+    - name: Setup Deno
+      uses: denoland/setup-deno@v1
       with:
-        python-version: "3.11"
+        deno-version: v2.x
 
-    - name: Install linting tools
+    - name: Check example apps run
       run: |
-        pip install flake8 black isort
+        # Check memory leak example compiles
+        cd examples/scenarios/1_memory_leak
+        deno check app.ts
 
-    - name: Check code formatting with black
-      run: |
-        black --check deno-debugger/scripts/ tests/ validate.py simulate_validation.py
-
-    - name: Check import sorting with isort
-      run: |
-        isort --check-only deno-debugger/scripts/ tests/ validate.py simulate_validation.py
-
-    - name: Lint with flake8
-      run: |
-        # Stop on errors, ignore line length (handled by black)
-        # E402: module imports not at top (expected in test files that modify sys.path)
-        # F541: f-string without placeholders (for print statements)
-        flake8 deno-debugger/scripts/ tests/ validate.py simulate_validation.py --max-line-length=120 --extend-ignore=E203,W503,E402,F541
-
-  type-check:
-    name: Type Checking
-    runs-on: ubuntu-latest
-
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: "3.11"
-
-    - name: Install dependencies
-      run: |
-        pip install -r deno-debugger/requirements.txt
-        pip install mypy
-
-    - name: Type check with mypy
-      run: |
-        mypy deno-debugger/scripts/ --ignore-missing-imports --no-strict-optional
-      continue-on-error: true  # Don't fail on type errors initially
+        # Check performance example compiles
+        cd ../2_performance
+        deno check app.ts
+      timeout-minutes: 2
