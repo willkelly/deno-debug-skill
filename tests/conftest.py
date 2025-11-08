@@ -6,8 +6,8 @@ import pytest
 import sys
 from pathlib import Path
 
-# Add scripts to path
-scripts_path = Path(__file__).parent.parent / 'scripts'
+# Add scripts to path (from skill directory)
+scripts_path = Path(__file__).parent.parent / 'skill' / 'scripts'
 sys.path.insert(0, str(scripts_path))
 
 
