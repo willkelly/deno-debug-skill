@@ -5,7 +5,7 @@ description: Interactive debugger for Deno/TypeScript applications using the V8 
 
 # Deno Debugger Skill
 
-Debug Deno/TypeScript applications using the V8 Inspector Protocol with pre-written helper scripts.
+Debug Deno/TypeScript applications using the V8 Inspector Protocol with pre-written TypeScript helper scripts.
 
 ## When to Use This Skill
 
@@ -20,10 +20,11 @@ Debug Deno/TypeScript applications using the V8 Inspector Protocol with pre-writ
 **DO NOT write your own CDP client, heap analyzer, or profiler code.**
 
 All infrastructure is already implemented in `./scripts/`:
-- `cdp_client.py` - Complete CDP WebSocket client
-- `heap_analyzer.py` - Heap snapshot parsing and analysis
-- `cpu_profiler.py` - CPU profiling and hot path detection
-- `breadcrumbs.py` - Investigation state tracking (use sparingly, see below)
+- `cdp_client.ts` - Complete CDP WebSocket client
+- `heap_analyzer.ts` - Heap snapshot parsing and analysis
+- `cpu_profiler.ts` - CPU profiling and hot path detection
+- `breadcrumbs.ts` - Investigation state tracking (use sparingly, see below)
+- `report_gen.ts` - Markdown report generation
 
 Your job is to **use these scripts** to investigate, not rewrite them.
 
@@ -58,27 +59,27 @@ Do NOT use breadcrumbs for:
 - ❌ Things already visible in the final report
 
 **Example of good breadcrumb use:**
-```python
-bc = Breadcrumbs()
+```typescript
+const bc = new Breadcrumbs();
 
-# High-level hypothesis
-bc.add_hypothesis(
-    "Memory leak caused by retained event listeners",
-    rationale="User reports memory grows when users navigate between pages"
-)
+// High-level hypothesis
+bc.addHypothesis(
+  "Memory leak caused by retained event listeners",
+  "User reports memory grows when users navigate between pages"
+);
 
-# Major finding that changes direction
-bc.add_finding(
-    "Found 500+ DOM nodes retained after page navigation",
-    data={'node_count': 523, 'size_mb': 12.4},
-    severity='critical'
-)
+// Major finding that changes direction
+bc.addFinding(
+  "Found 500+ DOM nodes retained after page navigation",
+  { node_count: 523, size_mb: 12.4 },
+  "critical"
+);
 
-# Final decision
-bc.add_decision(
-    "Root cause: event listeners not cleaned up in destroy()",
-    rationale="Heap snapshot shows references from global event bus"
-)
+// Final decision
+bc.addDecision(
+  "Root cause: event listeners not cleaned up in destroy()",
+  "Heap snapshot shows references from global event bus"
+);
 ```
 
 The breadcrumb timeline is for YOU to track your thinking, not a transcript of every action.
@@ -103,29 +104,23 @@ Make a todo list for all tasks in this workflow and work through them one at a t
 
 **Import the pre-written helper scripts:**
 
-```python
-import asyncio
-import sys
-from pathlib import Path
+```typescript
+import { CDPClient } from "./scripts/cdp_client.ts";
+import { Breadcrumbs } from "./scripts/breadcrumbs.ts";
 
-# Add scripts to path
-sys.path.insert(0, str(Path('./scripts')))
+async function investigate() {
+  // Initialize investigation tracking (optional for complex cases)
+  const bc = new Breadcrumbs();
 
-from cdp_client import CDPClient
-from breadcrumbs import Breadcrumbs
+  // Connect to Deno inspector
+  const client = new CDPClient("127.0.0.1", 9229);
+  await client.connect();
 
-async def investigate():
-    # Initialize investigation tracking
-    bc = Breadcrumbs()
+  // Enable debugging
+  await client.enableDebugger();
 
-    # Connect to Deno inspector
-    client = CDPClient('127.0.0.1', 9229)
-    await client.connect()
-
-    # Enable debugging
-    await client.enable_debugger()
-
-    # Your investigation continues...
+  // Your investigation continues...
+}
 ```
 
 **DO NOT write a custom CDP client. Use the CDPClient class.**
@@ -134,12 +129,12 @@ async def investigate():
 
 Form a clear hypothesis about what's causing the problem. You can optionally record it:
 
-```python
-# Optional: Track your initial hypothesis
-bc.add_hypothesis(
-    "Memory leak in upload handler due to retained buffers",
-    rationale="User reports memory grows after each file upload"
-)
+```typescript
+// Optional: Track your initial hypothesis
+bc.addHypothesis(
+  "Memory leak in upload handler due to retained buffers",
+  "User reports memory grows after each file upload"
+);
 ```
 
 **Note**: Only use breadcrumbs if the investigation is complex enough to warrant tracking your thought process. For simple investigations, skip breadcrumbs entirely.
@@ -150,234 +145,225 @@ Based on the problem type, follow one of these patterns:
 
 #### Pattern A: Memory Leak
 
-```python
-import json
-from heap_analyzer import HeapSnapshot
+```typescript
+import { captureSnapshot, compareSnapshots } from "./scripts/heap_analyzer.ts";
 
-# 1. Capture baseline
-snapshot1_json = await client.take_heap_snapshot(report_progress=False)
-snapshot1 = json.loads(snapshot1_json)
+// 1. Capture baseline
+console.log("Capturing baseline snapshot...");
+const snapshot1 = await captureSnapshot(client, "investigation_output/baseline.heapsnapshot");
+const baseline_size = (await Deno.stat("investigation_output/baseline.heapsnapshot")).size / (1024 * 1024);
+console.log(`Baseline: ${baseline_size.toFixed(2)} MB`);
 
-# 2. Trigger the leak (ask user or trigger programmatically)
-# ... trigger leak ...
+// 2. Trigger the leak (ask user or trigger programmatically)
+console.log("\nTrigger the leak now...");
+// User triggers leak or you make HTTP request, etc.
+await new Promise(resolve => setTimeout(resolve, 5000)); // Wait
 
-# 3. Capture comparison
-snapshot2_json = await client.take_heap_snapshot(report_progress=False)
-snapshot2 = json.loads(snapshot2_json)
+// 3. Capture comparison
+console.log("Capturing comparison snapshot...");
+const snapshot2 = await captureSnapshot(client, "investigation_output/after.heapsnapshot");
+const after_size = (await Deno.stat("investigation_output/after.heapsnapshot")).size / (1024 * 1024);
 
-# 4. Analyze growth
-growth = len(snapshot2_json) - len(snapshot1_json)
-growth_mb = growth / (1024 * 1024)
-print(f"Heap grew by {growth_mb:.2f} MB")
+// 4. Analyze growth
+const growth_mb = after_size - baseline_size;
+console.log(`After: ${after_size.toFixed(2)} MB (grew ${growth_mb.toFixed(2)} MB)`);
 
-# 5. Analyze the snapshot (optional - may fail with Deno)
-# heap = HeapSnapshot(snapshot2)
-# stats = heap.get_node_size_summary()
-# print(stats.head(10))  # Top object types
+// 5. Compare snapshots to see what grew
+const comparison = compareSnapshots(snapshot1, snapshot2);
+console.log("\nTop growing objects:");
+console.table(comparison.slice(0, 10));
 
-# 6. Examine code to find the cause
-# [Your code inspection here]
+// 6. Examine code to find the cause
+const sourceCode = await Deno.readTextFile("path/to/app.ts");
+// [Your code inspection here]
 ```
 
 #### Pattern B: Performance Bottleneck
 
-```python
-from cpu_profiler import CPUProfile
+```typescript
+import { startProfiling, stopProfiling, analyzeHotPaths } from "./scripts/cpu_profiler.ts";
 
-# 1. Start profiling
-await client.start_profiling()
-print("Profiling started")
+// 1. Start profiling
+await startProfiling(client);
+console.log("Profiling started");
 
-# 2. Trigger slow operation
-# ... trigger slow code ...
-await asyncio.sleep(2)  # Let it run
+// 2. Trigger slow operation
+console.log("Trigger the slow operation now...");
+// User triggers slow code or you make request
+await new Promise(resolve => setTimeout(resolve, 2000)); // Let it run
 
-# 3. Stop and analyze
-profile_data = await client.stop_profiling()
-profile = CPUProfile(profile_data)
+// 3. Stop and analyze
+const profile = await stopProfiling(client, "investigation_output/profile.cpuprofile");
 
-# 4. Find hot functions
-hot_functions = profile.get_hot_functions()
-print("\nHot functions:")
-for func in hot_functions[:5]:
-    print(f"  {func['function_name']}: {func['self_time_percent']:.1f}%")
+// 4. Find hot functions
+const hotFunctions = profile.getHotFunctions();
+console.log("\nHot functions:");
+for (const func of hotFunctions.slice(0, 5)) {
+  console.log(`  ${func.functionName}: ${func.totalPct.toFixed(1)}% total, ${func.selfPct.toFixed(1)}% self`);
+}
 
-# 5. Examine the slow code to understand why it's expensive
-# [Your code inspection here]
+// 5. Analyze hot paths
+const hotPaths = analyzeHotPaths(profile);
+console.table(hotPaths.slice(0, 5));
+
+// 6. Examine the slow code to understand why it's expensive
+const sourceCode = await Deno.readTextFile("path/to/slow_file.ts");
+// [Your code inspection here]
 ```
 
 #### Pattern C: Race Condition
 
-```python
-# 1. Set breakpoints at async boundaries
-await client.set_breakpoint_by_url('file:///app.ts', 42)
-print("Breakpoint set at line 42")
+```typescript
+// 1. Set breakpoints at async boundaries
+await client.setBreakpointByUrl("file:///app.ts", 42);
+console.log("Breakpoint set at line 42");
 
-# 2. Set pause on exceptions
-await client.set_pause_on_exceptions('all')
+// 2. Set pause on exceptions
+await client.setPauseOnExceptions("all");
 
-# 3. Trigger the race
-# ... trigger problematic async code ...
+// 3. Trigger the race
+console.log("Trigger the problematic async code now...");
+// ... trigger problematic async code ...
 
-# 4. When paused, inspect state
-frames = await client.get_call_frames()
-if frames:
-    variables = await client.get_scope_variables(frames[0]['callFrameId'])
-    print(f"Paused at: {frames[0]['location']}")
-    print(f"Variables: {variables}")
+// 4. When paused, inspect state
+const frames = client.getCallFrames();
+if (frames.length > 0) {
+  const variables = await client.getScopeVariables(frames[0].callFrameId);
+  console.log(`Paused at: ${frames[0].functionName} line ${frames[0].location.lineNumber}`);
+  console.log("Variables:", variables);
+}
 
-# 5. Evaluate expressions to check state
-result = await client.evaluate('myVariable.status')
-print(f"Variable state: {result}")
+// 5. Evaluate expressions to check state
+const result = await client.evaluate("myVariable.status");
+console.log("Variable state:", result);
 
-# 6. Examine code to find missing awaits or improper synchronization
-# [Your code inspection here]
+// 6. Examine code to find missing awaits or improper synchronization
+const sourceCode = await Deno.readTextFile("path/to/async_file.ts");
+// [Your code inspection here]
 ```
 
 ### 4. Examine Code
 
 Read the relevant source files to understand the bug:
 
-```python
-# Read the problematic file
-with open('path/to/app.ts', 'r') as f:
-    lines = f.readlines()
+```typescript
+// Read the problematic file
+const code = await Deno.readTextFile("path/to/app.ts");
+const lines = code.split("\n");
 
-# Find the problematic pattern
-for i, line in enumerate(lines, 1):
-    if 'problematic_pattern' in line:
-        bc.add_finding(
-            f"Found issue at line {i}",
-            data={'line': i, 'code': line.strip()},
-            severity='critical'
-        )
+// Find the problematic pattern
+for (let i = 0; i < lines.length; i++) {
+  if (lines[i].includes("problematic_pattern")) {
+    bc.addFinding(
+      `Found issue at line ${i + 1}`,
+      { line: i + 1, code: lines[i].trim() },
+      "critical"
+    );
+  }
+}
 ```
 
 ### 5. Analyze and Conclude
 
 Based on your investigation data, determine the root cause. You can optionally record your conclusion:
 
-```python
-# Optional: Record your conclusion if using breadcrumbs
-bc.add_decision(
-    "Root cause identified",
-    rationale="Heap snapshot shows ArrayBuffer retention, code shows missing cleanup"
-)
+```typescript
+// Optional: Record your conclusion if using breadcrumbs
+bc.addDecision(
+  "Root cause identified",
+  "Heap snapshot shows ArrayBuffer retention, code shows missing cleanup"
+);
 ```
 
 Most importantly: **Understand the problem well enough to explain it clearly to the user.**
 
 ### 6. Save Artifacts
 
-```python
-from pathlib import Path
-from datetime import datetime
-
-# Create output directory
-output_dir = Path('investigation_output')
-output_dir.mkdir(exist_ok=True)
-
-# Generate markdown report
-# IMPORTANT: Each section answers a DIFFERENT question. Avoid repetition.
-timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-report_md = f"""# Investigation Report
-
-**Date**: {timestamp}
-**Issue**: [Type of issue - e.g., "Memory leak investigation"]
-
-## Summary
-
-[What's broken? One clear sentence.]
-Example: "Upload handler retains ArrayBuffer objects in global array without cleanup."
-
-## Root Cause
-
-[WHY is it broken? Explain the mechanism.]
-Example: "The handleUpload() function pushes buffers to leakedBuffers[] for tracking,
-but never removes them. Each upload adds ~45KB that persists for the app lifetime."
-
-NOT just: "Buffers accumulate" (that's restating Summary)
-
-## Details
-
-[What ELSE did you learn? Show your evidence.]
-- Include relevant code snippets (not just line numbers)
-- Explain the anti-pattern or why this is problematic
-- Be specific about impact: "~45KB per upload = OOM after 20,000 requests in production"
-
-Example:
 ```typescript
-// Line 22-23 in app.ts:
+import { MarkdownReport } from "./scripts/report_gen.ts";
+
+// Create output directory
+await Deno.mkdir("investigation_output", { recursive: true });
+
+// Generate comprehensive markdown report
+const report = new MarkdownReport("Memory Leak Investigation", bc);
+
+// Add summary
+report.addSummary(
+  "Upload handler retains ArrayBuffer objects in global array without cleanup."
+);
+
+// Add problem description
+report.addProblem(
+  "Memory usage grows continuously with each file upload and never stabilizes."
+);
+
+// Add findings
+report.addFinding({
+  description: "ArrayBuffer objects not being released",
+  severity: "critical",
+  details: `Heap grew ${growth_mb.toFixed(2)} MB after single upload. ` +
+           `At this rate, production would hit OOM after ~${Math.floor(1024 / growth_mb)} uploads.`,
+  evidence: [
+    "Heap snapshot shows 500+ retained ArrayBuffers",
+    `Global array 'leakedBuffers' grows by ~${(growth_mb * 1024).toFixed(0)} KB per upload`,
+    "No cleanup code in success or error paths"
+  ]
+});
+
+// Add code snippet showing the bug
+report.addCodeSnippet(
+  "typescript",
+  `// Line 22-23 in app.ts:
 const leakedBuffers: ArrayBuffer[] = [];  // Global array
-leakedBuffers.push(buffer);  // Never cleared
+leakedBuffers.push(buffer);  // Never cleared`,
+  "Problematic code",
+  "app.ts:22"
+);
 
-// This is a "retain-and-forget" anti-pattern. The array grows indefinitely
-// because buffers are added but never removed after processing completes.
-```
+// Add root cause explanation
+report.addRootCause(
+  "Event listeners not cleaned up in destroy()",
+  "The handleUpload() function pushes buffers to leakedBuffers[] for tracking, " +
+  "but never removes them. Each upload adds ~45KB that persists for the app lifetime. " +
+  "This is a 'retain-and-forget' anti-pattern."
+);
 
-Heap grew {growth_mb:.2f} MB in single upload test. At this rate, production
-would hit OOM after ~20,000 uploads (assuming 1GB heap limit).
-
-## Location
-
-- File: `[filename]`
-- Line: [number]
-- Function: `[function_name]()`
-
-## Fix
-
-[What's the solution and WHY does it work?]
-
-Show the BEST solution with clear reasoning. Only include alternatives if they have
-legitimate trade-offs (e.g., performance vs simplicity). Don't show clearly inferior
-options just to have "multiple choices."
-
-```typescript
-// Remove the global array entirely
-// Process buffers immediately and discard them.
-async function handleUpload(fileSize: number): Promise<string> {{
+// Add fix with code
+report.addFix(
+  "Remove the global array entirely. Process buffers immediately and discard them.",
+  {
+    language: "typescript",
+    code: `// Remove the global array entirely
+async function handleUpload(fileSize: number): Promise<string> {
   const buffer = new ArrayBuffer(fileSize);
   const result = await processBuffer(buffer);
   // Buffer goes out of scope here - eligible for GC
   return result;
-}}
-```
+}`,
+    caption: "Recommended fix"
+  }
+);
 
-This eliminates the root cause: no global array means no retention bugs. The buffer
-is created, used, and immediately becomes eligible for garbage collection when it
-goes out of scope.
+// Add data table
+report.addDataTable("Investigation Metrics", [
+  { Metric: "Baseline heap", Value: `${baseline_size.toFixed(2)} MB` },
+  { Metric: "After operation", Value: `${after_size.toFixed(2)} MB` },
+  { Metric: "Growth", Value: `${growth_mb.toFixed(2)} MB` },
+  { Metric: "Growth per upload", Value: `~${(growth_mb * 1024).toFixed(0)} KB` },
+  { Metric: "Projected OOM", Value: `After ~${Math.floor(1024 / growth_mb)} uploads` }
+]);
 
-Alternative approaches like clearing the array periodically (`leakedBuffers.length = 0`)
-are inferior because they still maintain global state and risk retention if exceptions
-occur before cleanup.
+// Save report
+await report.save("investigation_output/REPORT.md");
 
-## Data
+// Optionally save breadcrumbs if used
+if (bc && bc.breadcrumbs.length > 0) {
+  await bc.save("investigation_output/investigation.json");
+}
 
-- Baseline heap: [X] MB
-- After operation: [Y] MB
-- Growth: [Z] MB ([percentage]%)
-- Rate: ~[X]KB per operation
-- Projected OOM: After ~[N] operations
-- Snapshots saved to: investigation_output/
-
-"""
-
-with open(output_dir / 'REPORT.md', 'w') as f:
-    f.write(report_md)
-
-# Save snapshots (if investigating memory)
-if snapshot1_json:
-    with open(output_dir / 'baseline.heapsnapshot', 'w') as f:
-        f.write(snapshot1_json)
-    with open(output_dir / 'after.heapsnapshot', 'w') as f:
-        f.write(snapshot2_json)
-
-# Optionally save breadcrumbs if used
-if bc:
-    bc.save(output_dir / 'investigation.json')
-
-# Close connection
-await client.close()
+// Close connection
+await client.close();
 ```
 
 ### 7. Present Findings
@@ -389,21 +375,26 @@ When investigation is complete, present your findings to the user as a clear, co
 ```
 I found the memory leak! 🎯
 
-The issue is in `upload_handler.ts` at line 42. The `processUpload()` function
-creates ArrayBuffer objects but never releases them. Each upload adds ~50MB to
-a global `pendingUploads` array that never gets cleared.
+The issue is in `app.ts` at line 22. The `handleUpload()` function creates
+ArrayBuffer objects but never releases them. Each upload adds ~45KB to a global
+`leakedBuffers` array that never gets cleared.
 
 Fix:
-Add this cleanup after processing:
-  pendingUploads.length = 0;  // Clear after each batch
+Remove the global array entirely and process buffers immediately:
 
-Or better yet, don't store them at all - process and discard immediately.
+```typescript
+async function handleUpload(fileSize: number): Promise<string> {
+  const buffer = new ArrayBuffer(fileSize);
+  const result = await processBuffer(buffer);
+  return result; // Buffer becomes eligible for GC
+}
+```
 
 I've saved the investigation to investigation_output/:
 - REPORT.md - Full investigation report
 - baseline.heapsnapshot - Before state (8.8 MB)
 - after.heapsnapshot - After state (8.9 MB)
-- investigation.json - Investigation timeline (if breadcrumbs used)
+- investigation.json - Investigation timeline
 ```
 
 **Guidelines for presenting findings:**
@@ -419,208 +410,219 @@ I've saved the investigation to investigation_output/:
 
 Here's a complete end-to-end investigation you can use as a template:
 
-```python
-import asyncio
-import json
-import sys
-from pathlib import Path
-from datetime import datetime
-
-sys.path.insert(0, str(Path('./scripts')))
-
-from cdp_client import CDPClient
-
-async def investigate_memory_leak():
-    print("Starting memory leak investigation...")
-
-    # Connect
-    client = CDPClient('127.0.0.1', 9229)
-    await client.connect()
-    await client.enable_debugger()
-
-    print("Connected to Deno inspector")
-
-    # Baseline snapshot
-    print("\nCapturing baseline...")
-    snapshot1_json = await client.take_heap_snapshot()
-    baseline_size = len(snapshot1_json) / (1024 * 1024)  # MB
-    print(f"Baseline: {baseline_size:.2f} MB")
-
-    # Trigger leak
-    print("\nTrigger the leak now (or I'll wait 5 seconds)...")
-    await asyncio.sleep(5)
-
-    # Comparison snapshot
-    print("Capturing comparison snapshot...")
-    snapshot2_json = await client.take_heap_snapshot()
-    after_size = len(snapshot2_json) / (1024 * 1024)  # MB
-
-    # Analyze
-    growth = len(snapshot2_json) - len(snapshot1_json)
-    growth_mb = growth / (1024 * 1024)
-    print(f"After: {after_size:.2f} MB (grew {growth_mb:.2f} MB)")
-
-    # Read and examine the source code
-    print("\nExamining source code...")
-    # [Your code inspection logic here]
-
-    # Save artifacts
-    output_dir = Path('investigation_output')
-    output_dir.mkdir(exist_ok=True)
-
-    with open(output_dir / 'baseline.heapsnapshot', 'w') as f:
-        f.write(snapshot1_json)
-    with open(output_dir / 'after.heapsnapshot', 'w') as f:
-        f.write(snapshot2_json)
-
-    # Generate report (following the new guidelines)
-    growth_kb = growth / 1024
-    uploads_to_oom = (1024 * 1024 * 1024) / growth  # 1GB heap limit
-
-    report = f"""# Memory Leak Investigation
-
-**Date**: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-
-## Summary
-
-Upload handler retains ArrayBuffer objects in global array without cleanup.
-
-## Root Cause
-
-The `handleUpload()` function pushes buffers to `pendingUploads[]` for tracking,
-but never removes them. Each upload adds ~{growth_kb:.0f} KB that persists for
-the application lifetime.
-
-## Details
-
 ```typescript
-// Line 13-22 in upload_handler.ts:
-const pendingUploads: ArrayBuffer[] = [];  // Global array
+import { CDPClient } from "./scripts/cdp_client.ts";
+import { captureSnapshot, compareSnapshots } from "./scripts/heap_analyzer.ts";
+import { MarkdownReport } from "./scripts/report_gen.ts";
+import { Breadcrumbs } from "./scripts/breadcrumbs.ts";
 
-async function handleUpload(fileSize: number) {{
+async function investigateMemoryLeak() {
+  console.log("Starting memory leak investigation...");
+
+  // Optional: Track investigation reasoning
+  const bc = new Breadcrumbs("memory_leak_investigation");
+  bc.addHypothesis(
+    "Upload handler retains file buffers",
+    "User reports memory grows with each upload"
+  );
+
+  // Connect
+  const client = new CDPClient("127.0.0.1", 9229);
+  await client.connect();
+  await client.enableDebugger();
+  console.log("Connected to Deno inspector");
+
+  // Create output directory
+  await Deno.mkdir("investigation_output", { recursive: true });
+
+  // Baseline snapshot
+  console.log("\nCapturing baseline...");
+  const snapshot1 = await captureSnapshot(
+    client,
+    "investigation_output/baseline.heapsnapshot"
+  );
+  const baseline_size = (await Deno.stat("investigation_output/baseline.heapsnapshot")).size / (1024 * 1024);
+  console.log(`Baseline: ${baseline_size.toFixed(2)} MB`);
+
+  // Trigger leak
+  console.log("\nTrigger the leak now (waiting 5 seconds)...");
+  await new Promise(resolve => setTimeout(resolve, 5000));
+
+  // Comparison snapshot
+  console.log("Capturing comparison snapshot...");
+  const snapshot2 = await captureSnapshot(
+    client,
+    "investigation_output/after.heapsnapshot"
+  );
+  const after_size = (await Deno.stat("investigation_output/after.heapsnapshot")).size / (1024 * 1024);
+
+  // Analyze
+  const growth_mb = after_size - baseline_size;
+  console.log(`After: ${after_size.toFixed(2)} MB (grew ${growth_mb.toFixed(2)} MB)`);
+
+  // Record finding
+  bc.addFinding(
+    "Heap grew significantly after upload",
+    { growth_mb, baseline_size, after_size },
+    "critical"
+  );
+
+  // Compare snapshots
+  const comparison = compareSnapshots(snapshot1, snapshot2);
+  console.log("\nTop growing objects:");
+  console.table(comparison.slice(0, 10));
+
+  // Examine source code
+  console.log("\nExamining source code...");
+  const appCode = await Deno.readTextFile("path/to/app.ts");
+  // [Code inspection logic would go here]
+
+  bc.addDecision(
+    "Root cause: global array retains buffers",
+    "Code shows leakedBuffers[] array with no cleanup"
+  );
+
+  // Generate comprehensive report
+  const report = new MarkdownReport("Memory Leak Investigation", bc);
+
+  report.addSummary(
+    "Upload handler retains ArrayBuffer objects in global array without cleanup."
+  );
+
+  report.addProblem(
+    "Memory grows continuously with each file upload and never stabilizes. " +
+    "Production would hit OOM after ~20,000 uploads."
+  );
+
+  report.addFinding({
+    description: "ArrayBuffer objects not being released",
+    severity: "critical",
+    details: `Heap grew ${growth_mb.toFixed(2)} MB after single upload.`,
+    evidence: [
+      "Heap snapshot shows retained ArrayBuffers",
+      `Global array grows by ~${(growth_mb * 1024).toFixed(0)} KB per upload`,
+      "No cleanup in error or success paths"
+    ]
+  });
+
+  report.addCodeSnippet(
+    "typescript",
+    `const leakedBuffers: ArrayBuffer[] = [];
+async function handleUpload(fileSize: number) {
   const buffer = new ArrayBuffer(fileSize);
-  pendingUploads.push(buffer);  // BUG: Never cleared!
+  leakedBuffers.push(buffer);  // BUG: Never cleared!
   await processBuffer(buffer);
-}}
-```
+}`,
+    "Problematic code",
+    "app.ts:22"
+  );
 
-This is a "retain-and-forget" anti-pattern. The array grows indefinitely because
-buffers are added but never removed after processing completes. There's no cleanup
-logic in error handlers or success paths.
+  report.addRootCause(
+    "Global array retains all buffers indefinitely",
+    "The handleUpload() function pushes buffers to leakedBuffers[] but never " +
+    "removes them. This is a 'retain-and-forget' anti-pattern."
+  );
 
-Heap grew {growth_mb:.2f} MB in single upload test. At this rate, production would
-hit OOM after ~{uploads_to_oom:,.0f} uploads (assuming 1GB heap limit).
-
-## Location
-
-- File: `upload_handler.ts`
-- Line: 22
-- Function: `handleUpload()`
-
-## Fix
-
-```typescript
-// Remove the global array entirely
-async function handleUpload(fileSize: number): Promise<string> {{
+  report.addFix(
+    "Remove the global array entirely. Process buffers immediately and discard.",
+    {
+      language: "typescript",
+      code: `async function handleUpload(fileSize: number): Promise<string> {
   const buffer = new ArrayBuffer(fileSize);
   const result = await processBuffer(buffer);
-  // Buffer goes out of scope here - eligible for GC
-  return result;
-}}
-```
+  return result; // Buffer becomes eligible for GC
+}`,
+      caption: "Recommended fix"
+    }
+  );
 
-This eliminates the root cause: no global array means no retention bugs. The buffer
-is created, used, and immediately becomes eligible for garbage collection.
+  report.addDataTable("Metrics", [
+    { Metric: "Baseline heap", Value: `${baseline_size.toFixed(2)} MB` },
+    { Metric: "After operation", Value: `${after_size.toFixed(2)} MB` },
+    { Metric: "Growth", Value: `${growth_mb.toFixed(2)} MB` },
+    { Metric: "Projected OOM", Value: `~${Math.floor(1024 / growth_mb)} uploads` }
+  ]);
 
-Clearing the array periodically (`pendingUploads.length = 0`) would be inferior
-because it maintains global state and risks retention if exceptions occur before cleanup.
+  await report.save("investigation_output/REPORT.md");
+  await bc.save("investigation_output/investigation.json");
+  await client.close();
 
-## Data
+  console.log("\n✓ Investigation complete! See investigation_output/REPORT.md");
+}
 
-- Baseline heap: {baseline_size:.2f} MB
-- After operation: {after_size:.2f} MB
-- Growth: {growth_mb:.2f} MB ({(growth / len(snapshot1_json)) * 100:.2f}%)
-- Rate: ~{growth_kb:.0f} KB per upload
-- Projected OOM: After ~{uploads_to_oom:,.0f} uploads
-- Snapshots saved to: investigation_output/
-"""
-
-    with open(output_dir / 'REPORT.md', 'w') as f:
-        f.write(report)
-
-    await client.close()
-
-    print(f"\n✓ Investigation complete! See {output_dir}/REPORT.md")
-
-# Run it
-asyncio.run(investigate_memory_leak())
+// Run it
+await investigateMemoryLeak();
 ```
 
 ## API Reference
 
 ### CDPClient Methods
 
-```python
-client = CDPClient('127.0.0.1', 9229)
-await client.connect()
+```typescript
+const client = new CDPClient("127.0.0.1", 9229);
+await client.connect();
 
-# Debugging
-await client.enable_debugger()
-await client.set_breakpoint_by_url('file:///app.ts', 42)
-await client.resume()
-await client.step_over()
+// Debugging
+await client.enableDebugger();
+await client.setBreakpointByUrl("file:///app.ts", 42);
+await client.resume();
+await client.stepOver();
 
-# Inspection
-frames = await client.get_call_frames()
-variables = await client.get_scope_variables(frame_id)
-result = await client.evaluate('expression')
+// Inspection
+const frames = client.getCallFrames();
+const variables = await client.getScopeVariables(frameId);
+const result = await client.evaluate("expression");
 
-# Profiling
-snapshot_json = await client.take_heap_snapshot()
-await client.start_profiling()
-profile_data = await client.stop_profiling()
+// Profiling
+const snapshotJson = await client.takeHeapSnapshot();
+await client.startProfiling();
+const profileData = await client.stopProfiling();
 
-await client.close()
+await client.close();
 ```
 
 ### Breadcrumbs Methods (Optional)
 
 **Only use for complex investigations where tracking your thought process adds value.**
 
-```python
-bc = Breadcrumbs()
+```typescript
+const bc = new Breadcrumbs();
 
-# Track major milestones only
-bc.add_hypothesis(description, rationale="why")
-bc.add_finding(description, data={}, severity='info|warning|critical')
-bc.add_decision(description, rationale="why")
+// Track major milestones only
+bc.addHypothesis(description, rationale);
+bc.addFinding(description, data, severity); // severity: "info" | "warning" | "critical"
+bc.addDecision(description, rationale);
 
-# Save for later review
-bc.save('investigation.json')
+// Save for later review
+await bc.save("investigation.json");
 ```
-
-Note: Don't use `add_test()` for routine actions. Reserve breadcrumbs for significant investigative decisions.
 
 ### HeapSnapshot Methods
 
-```python
-from heap_analyzer import HeapSnapshot
-import json
+```typescript
+import { loadSnapshot, compareSnapshots, findLargestObjects } from "./scripts/heap_analyzer.ts";
 
-snapshot = HeapSnapshot(json.loads(snapshot_json))
-stats = snapshot.get_node_size_summary()  # Returns pandas DataFrame
-nodes = snapshot.get_nodes_by_type('Array')
-path = snapshot.find_retaining_path(node_id)
+const snapshot = await loadSnapshot("heap.heapsnapshot");
+const summary = snapshot.getNodeSizeSummary();
+const nodes = snapshot.getNodesByType("Array");
+const path = snapshot.findRetainingPath(nodeId);
+
+// Compare two snapshots
+const comparison = compareSnapshots(before, after);
+
+// Find largest objects
+const largest = findLargestObjects(snapshot);
 ```
 
 ### CPUProfile Methods
 
-```python
-from cpu_profiler import CPUProfile
+```typescript
+import { loadProfile, analyzeHotPaths, detectAsyncIssues } from "./scripts/cpu_profiler.ts";
 
-profile = CPUProfile(profile_data)
-hot = profile.get_hot_functions()  # List of dicts with function_name, self_time_percent
-issues = profile.detect_async_issues()
+const profile = await loadProfile("profile.cpuprofile");
+const hot = profile.getHotFunctions(); // Array of hot functions
+const issues = detectAsyncIssues(profile);
+const paths = analyzeHotPaths(profile);
 ```
 
 ## Key Principles
@@ -639,9 +641,9 @@ issues = profile.detect_async_issues()
 ❌ **DON'T** use breadcrumbs for every small action
 ❌ **DON'T** forget to save artifacts
 
-✅ **DO** use CDPClient from cdp_client.py
-✅ **DO** use HeapSnapshot from heap_analyzer.py
-✅ **DO** use CPUProfile from cpu_profiler.py
+✅ **DO** use CDPClient from cdp_client.ts
+✅ **DO** use HeapSnapshot from heap_analyzer.ts
+✅ **DO** use CPUProfile from cpu_profiler.ts
 ✅ **DO** use breadcrumbs only for major milestones
 ✅ **DO** save snapshots and investigation timeline
 
