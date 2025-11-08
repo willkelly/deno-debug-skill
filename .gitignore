@@ -34,3 +34,8 @@ breadcrumbs_*.json
 
 # Jupyter
 .ipynb_checkpoints/
+
+# Playwright
+.playwright/
+playwright-report/
+test-results/
