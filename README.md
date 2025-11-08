@@ -11,7 +11,7 @@ Claude becomes your debugging partner that:
 1. **Connects** to your Deno app via Chrome DevTools Protocol
 2. **Investigates** using breakpoints, heap snapshots, and CPU profiling
 3. **Tracks** investigation reasoning with breadcrumbs (for complex cases)
-4. **Analyzes** data with Python (pandas for heap/CPU analysis)
+4. **Analyzes** data with native TypeScript (no external dependencies)
 5. **Reports** findings in clear Markdown with specific recommendations
 
 ## 🚀 Quick Start
@@ -22,9 +22,7 @@ Claude becomes your debugging partner that:
 # Copy to Claude's skills directory
 cp -r deno-debugger/ ~/.claude/skills/
 
-# Install Python dependencies
-cd ~/.claude/skills/deno-debugger/
-pip install -r requirements.txt
+# That's it! No dependencies to install - uses Deno stdlib only
 ```
 
 ### 2. Launch Your Deno App with Inspector
@@ -80,7 +78,7 @@ Claude will:
 5. Generate REPORT.md with:
    - Performance measurements (2.5s → 0.02s)
    - Hot path analysis
-   - Algorithm complexity comparison (O(n) → O(sqrt(n)))
+   - Algorithm complexity comparison (O(n²) → O(n log n))
    - Optimized implementation
    - Speedup projection (~100x)
 ```
@@ -147,96 +145,136 @@ removes them. Each upload adds ~47 KB that persists for the app lifetime.
 deno-debugger/
 ├── SKILL.md              # Instructions Claude reads (workflow + patterns)
 ├── README.md             # Installation guide (for users)
-├── requirements.txt      # Python dependencies
-└── scripts/              # Pre-written debugging infrastructure
-    ├── cdp_client.py     # Chrome DevTools Protocol client
-    ├── heap_analyzer.py  # Heap snapshot parsing
-    ├── cpu_profiler.py   # CPU profile analysis
-    ├── breadcrumbs.py    # Investigation tracking (optional)
-    └── org_report.py     # Org mode reports (legacy, optional)
+├── deno.json             # Deno configuration with tasks
+└── scripts/              # Pre-written debugging infrastructure (TypeScript)
+    ├── cdp_client.ts     # Chrome DevTools Protocol client
+    ├── heap_analyzer.ts  # Heap snapshot parsing
+    ├── cpu_profiler.ts   # CPU profile analysis
+    ├── breadcrumbs.ts    # Investigation tracking (optional)
+    ├── report_gen.ts     # Markdown report generation
+    ├── types.ts          # V8 and CDP type definitions
+    └── deps.ts           # Deno stdlib dependencies
 ```
 
 ## 🔧 Core Components
 
-### CDP Client (`cdp_client.py`)
+### CDP Client (`cdp_client.ts`)
 
 Handles all communication with Deno's V8 Inspector:
 
-```python
-from cdp_client import CDPClient
+```typescript
+import { CDPClient } from "./scripts/cdp_client.ts";
 
-client = CDPClient('127.0.0.1', 9229)
-await client.connect()
-await client.enable_debugger()
+const client = new CDPClient("127.0.0.1", 9229);
+await client.connect();
+await client.enableDebugger();
 
-# Set breakpoint
-await client.set_breakpoint_by_url('file:///app.ts', 42)
+// Set breakpoint
+await client.setBreakpointByUrl("file:///app.ts", 42);
 
-# Resume execution
-await client.resume()
+// Resume execution
+await client.resume();
 
-# When paused, inspect
-frames = await client.get_call_frames()
-vars = await client.get_scope_variables(frames[0]['callFrameId'])
+// When paused, inspect
+const frames = client.getCallFrames();
+const vars = await client.getScopeVariables(frames[0].callFrameId);
 ```
 
 **Features:**
-- WebSocket connection with 100MB max_size (handles large heap snapshots)
+- Native WebSocket API (no external dependencies)
 - Deno/Node runtime detection
-- Async/await API
+- Type-safe async/await API
 - Heap snapshot capture
 - CPU profiling
 - Breakpoint management
 
-### Heap Analyzer (`heap_analyzer.py`)
+### Heap Analyzer (`heap_analyzer.ts`)
 
 Parse and analyze V8 heap snapshots:
 
-```python
-from heap_analyzer import HeapSnapshot
-import json
+```typescript
+import { loadSnapshot, compareSnapshots } from "./scripts/heap_analyzer.ts";
 
-snapshot = HeapSnapshot(json.loads(snapshot_json))
-stats = snapshot.get_node_size_summary()  # Returns pandas DataFrame
-nodes = snapshot.get_nodes_by_type('Array')
+const snapshot = await loadSnapshot("heap.heapsnapshot");
+const summary = snapshot.getNodeSizeSummary();
+const nodes = snapshot.getNodesByType("Array");
+
+// Compare two snapshots
+const comparison = compareSnapshots(before, after);
+console.table(comparison.slice(0, 10));
 ```
 
-### CPU Profiler (`cpu_profiler.py`)
+**Features:**
+- Native Map/Array data structures (no pandas needed)
+- Fast node indexing and lookup
+- Retaining path analysis
+- Growth comparison
+
+### CPU Profiler (`cpu_profiler.ts`)
 
 Profile CPU usage and find bottlenecks:
 
-```python
-from cpu_profiler import CPUProfile
+```typescript
+import { loadProfile, analyzeHotPaths } from "./scripts/cpu_profiler.ts";
 
-profile = CPUProfile(profile_data)
-hot_functions = profile.get_hot_functions()  # DataFrame with CPU %
-async_issues = profile.detect_async_issues()
+const profile = await loadProfile("profile.cpuprofile");
+const hotFunctions = profile.getHotFunctions();
+const asyncIssues = detectAsyncIssues(profile);
+const hotPaths = analyzeHotPaths(profile);
 ```
 
-### Breadcrumbs (`breadcrumbs.py`)
+**Features:**
+- Hot function detection
+- Call tree analysis
+- Async/await pattern detection
+- Optimization issue identification
+
+### Breadcrumbs (`breadcrumbs.ts`)
 
 Track investigation reasoning (optional, for complex investigations):
 
-```python
-from breadcrumbs import Breadcrumbs
+```typescript
+import { Breadcrumbs } from "./scripts/breadcrumbs.ts";
 
-bc = Breadcrumbs()
+const bc = new Breadcrumbs();
 
-# Track major milestones only
-bc.add_hypothesis("Memory leak in upload handler",
-                 rationale="User reports growth after uploads")
+// Track major milestones only
+bc.addHypothesis("Memory leak in upload handler",
+                 "User reports growth after uploads");
 
-bc.add_finding("ArrayBuffer retention at line 22",
-              data={'growth_mb': 0.05},
-              severity='critical')
+bc.addFinding("ArrayBuffer retention at line 22",
+              { growth_mb: 0.05 },
+              "critical");
 
-bc.add_decision("Root cause identified",
-               rationale="Code shows missing cleanup")
+bc.addDecision("Root cause identified",
+               "Code shows missing cleanup");
 
-bc.save('investigation.json')
+await bc.save("investigation.json");
 ```
 
 **Use sparingly**: Breadcrumbs track investigative *reasoning*, not every action. See SKILL.md for guidelines.
+
+### Report Generator (`report_gen.ts`)
+
+Generate comprehensive Markdown reports:
+
+```typescript
+import { MarkdownReport } from "./scripts/report_gen.ts";
+
+const report = new MarkdownReport("Memory Leak Investigation", bc);
+
+report.addSummary("Upload handler retains ArrayBuffer objects...");
+report.addProblem("Memory grows continuously...");
+report.addFinding({
+  description: "ArrayBuffer objects not being released",
+  severity: "critical",
+  evidence: ["Heap snapshot shows 500+ retained ArrayBuffers"]
+});
+report.addRootCause("Global array retains all buffers", "...");
+report.addFix("Remove the global array entirely", codeSnippet);
+
+await report.save("REPORT.md");
+```
 
 ## 🎓 Investigation Patterns
 
@@ -270,6 +308,12 @@ The skill includes three pre-defined patterns in SKILL.md:
 - Robust CDP client, heap analyzer, profiler already implemented
 - Claude uses existing scripts, doesn't write custom debugging code
 - Focus on investigation logic, not protocol details
+
+### TypeScript/Deno Native
+- Zero external dependencies (Deno stdlib only)
+- Type-safe V8 data structures
+- Same runtime as apps being debugged
+- Simpler installation (no pip, no virtualenv)
 
 ### Evidence-Based Reports
 - Every claim backed by data
@@ -307,19 +351,19 @@ cd examples/scenarios/1_memory_leak/
 
 **Available scenarios:**
 - **1_memory_leak/** - ArrayBuffer accumulation in upload handler
-- **2_performance_bottleneck/** - Inefficient prime checking and fibonacci
-- **3_race_condition/** - Missing awaits and concurrent update bugs
+- **2_performance/** - Inefficient algorithms needing optimization
 
 See [examples/scenarios/README.md](examples/scenarios/README.md) for details.
 
 ### Run Automated Tests
 
 ```bash
-# Run all unit tests
-./run_tests.sh
+# Run all tests with Deno
+cd deno-debugger
+deno task test
 
-# Or with pytest directly
-pytest tests/ -v
+# Or run specific tests
+deno test scripts/heap_analyzer_test.ts -v
 ```
 
 **Test coverage:**
@@ -333,44 +377,40 @@ pytest tests/ -v
 
 ### Custom Conditional Breakpoints
 
-```python
-# Break only when condition is true
-await client.set_breakpoint_by_url('file:///app.ts', 42,
-                                  condition='fileSize > 1000000')
+```typescript
+// Break only when condition is true
+await client.setBreakpointByUrl("file:///app.ts", 42, 0, "fileSize > 1000000");
 ```
 
 ### Watch Expressions
 
-```python
-# Monitor value changes
-while not done:
-    value = await client.evaluate('myVariable')
-    print(f"Variable value: {value}")
-    await asyncio.sleep(1)
+```typescript
+// Monitor value changes
+while (!done) {
+  const value = await client.evaluate("myVariable");
+  console.log("Variable value:", value);
+  await new Promise(resolve => setTimeout(resolve, 1000));
+}
 ```
 
 ### Manual Investigation
 
 You can use the scripts directly for custom investigations:
 
-```python
-import asyncio
-from pathlib import Path
-import sys
+```typescript
+import { CDPClient } from "./deno-debugger/scripts/cdp_client.ts";
 
-sys.path.insert(0, str(Path('./scripts')))
-from cdp_client import CDPClient
+async function investigate() {
+  const client = new CDPClient("127.0.0.1", 9229);
+  await client.connect();
+  await client.enableDebugger();
 
-async def investigate():
-    client = CDPClient('127.0.0.1', 9229)
-    await client.connect()
-    await client.enable_debugger()
+  // Your custom investigation logic here
 
-    # Your custom investigation logic here
+  await client.close();
+}
 
-    await client.close()
-
-asyncio.run(investigate())
+await investigate();
 ```
 
 ## 📚 Documentation
@@ -385,10 +425,11 @@ asyncio.run(investigate())
 
 Contributions welcome! You can:
 
-- Add new analysis functions to `heap_analyzer.py` or `cpu_profiler.py`
+- Add new analysis functions to `heap_analyzer.ts` or `cpu_profiler.ts`
 - Create new investigation patterns in `SKILL.md`
 - Add more test scenarios to `examples/scenarios/`
 - Improve report quality guidelines
+- Add Deno tests for uncovered code paths
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
@@ -398,8 +439,8 @@ MIT License - use freely for your debugging needs!
 
 ## 🎯 Next Steps
 
-1. **Install the skill:** Copy `deno-debugger/` to `~/.claude/skills/deno-debugger/`
-2. **Install dependencies:** `pip install -r requirements.txt`
+1. **Install the skill:** Copy `deno-debugger/` to `~/.claude/skills/`
+2. **No dependencies needed:** Pure TypeScript using Deno stdlib
 3. **Try a scenario:** Run `examples/scenarios/1_memory_leak/run.sh`
 4. **Debug your app:** Start with `--inspect` and ask Claude!
 

@@ -74,6 +74,67 @@ Then copy the prompt and paste it to Claude.
 
 ---
 
+### 4. State Corruption / Variable Mutation
+**Location:** `4_state_corruption/`
+
+**Bugs:**
+- Object reference shared instead of copied (`DEFAULT_SESSION`)
+- Helper function `validateAndNormalizePermissions()` unexpectedly mutates state
+- Cache invalidation affecting unrelated users (prefix match bug)
+
+**What Claude will find:**
+- Multiple sessions sharing the same object reference
+- Username getting overwritten when new session created
+- Corrupted flag set on all sessions (because they're the same object)
+- Cache invalidation cascade due to string prefix matching
+
+**Debugging techniques:**
+- Conditional breakpoint: `break when session.corrupted === true`
+- Watch variable: `DEFAULT_SESSION`
+- Watch expression: `activeSessions.get('user-001').username`
+- Step through to observe reference sharing
+
+**How to run:**
+```bash
+cd 4_state_corruption/
+./run.sh
+```
+
+Then copy the prompt and paste it to Claude.
+
+---
+
+### 5. Event Loop / Timing Issues
+**Location:** `5_event_loop_timing/`
+
+**Bugs:**
+- `setTimeout(0)` assumed to execute "immediately" but it's a macrotask
+- Mixing Promises (microtasks) with setTimeout (macrotasks) creates unexpected execution order
+- Task completion checked too early (before macrotask executes)
+- Sequential processing assumption violated by event loop behavior
+
+**What Claude will find:**
+- Tasks scheduled with `setTimeout(0)` still pending when checked immediately
+- Promise callbacks execute before setTimeout callbacks (microtasks before macrotasks)
+- State changes happening in different order than code suggests
+- Timing assumptions about "immediate" execution are wrong
+
+**Debugging techniques:**
+- Set breakpoints in setTimeout and Promise.then callbacks
+- Watch variable: `taskQueue` to see state changes
+- Step through to observe actual execution order
+- Understand microtask queue vs macrotask queue
+
+**How to run:**
+```bash
+cd 5_event_loop_timing/
+./run.sh
+```
+
+Then copy the prompt and paste it to Claude.
+
+---
+
 ## 🚀 Quick Start
 
 ### Option A: Run a Specific Scenario
@@ -190,6 +251,8 @@ Each scenario demonstrates a specific debugging pattern:
 | Memory Leak | Compare heap snapshots | Baseline → trigger → compare → analyze growth |
 | Performance | CPU profiling | Profile → identify hot paths → analyze algorithm complexity |
 | Race Condition | Async flow tracing | Breakpoints → trace execution → identify synchronization issues |
+| State Corruption | Variable watching | Conditional breakpoints → watch expressions → step-by-step debugging |
+| Event Loop Timing | Execution order analysis | Breakpoint in callbacks → watch queue → understand microtask vs macrotask |
 
 ## 🔧 Customizing Scenarios
 
@@ -217,7 +280,7 @@ cp ../1_memory_leak/run.sh ./run.sh
 ## 📝 Notes
 
 - All scenarios use the same inspector port (9229), so only run one at a time
-- Apps run on different HTTP ports (8000, 8001, 8002) to avoid conflicts
+- Apps run on different HTTP ports (8000, 8001, 8002, 8003, 8004) to avoid conflicts
 - Press Ctrl+C to stop the run.sh script and clean up
 - Investigation artifacts are timestamped to avoid overwrites
 - The skill works best when you describe the observed behavior, not the root cause
