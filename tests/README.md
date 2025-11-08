@@ -43,9 +43,10 @@ open htmlcov/index.html
 ## Test Structure
 
 - `conftest.py` - Shared fixtures (sample heap data, CPU profiles)
-- `test_breadcrumbs.py` - Breadcrumb tracking (16 tests)
-- `test_heap_parser.py` - Heap snapshot parsing (12 tests)
+- `test_breadcrumbs.py` - Breadcrumb tracking (12 tests)
+- `test_heap_parser.py` - Heap snapshot parsing (10 tests)
 - `test_cpu_parser.py` - CPU profile parsing (11 tests)
+- `test_integration_cdp.py` - Integration tests with real Deno
 
 ## Adding Tests
 

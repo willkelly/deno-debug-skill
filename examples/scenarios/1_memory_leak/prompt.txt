@@ -1,0 +1,8 @@
+My Deno app's memory keeps growing with each file upload and never gets released.
+
+Can you investigate what's causing the leak?
+
+The app is running on http://localhost:8000 and has a /upload endpoint.
+You can trigger uploads with: curl 'http://localhost:8000/upload?size=50000000'
+
+I've started it with --inspect on port 9229.

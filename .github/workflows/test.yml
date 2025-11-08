@@ -72,7 +72,7 @@ jobs:
       run: |
         python validate.py
       timeout-minutes: 5
-      continue-on-error: true  # Known issue: heap snapshots don't work with Deno
+      continue-on-error: true  # Allow validation failures in CI
 
     - name: Upload validation artifacts
       if: always()

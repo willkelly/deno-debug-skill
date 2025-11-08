@@ -18,20 +18,24 @@ Claude becomes your debugging partner that:
 
 ```
 deno-debugger-skill/
-├── SKILL.md                 # Instructions Claude reads
-├── README.md                # This file
-├── requirements.txt         # Python dependencies
-├── scripts/
-│   ├── cdp_client.py       # Chrome DevTools Protocol client
-│   ├── heap_analyzer.py    # Heap snapshot analysis
-│   ├── cpu_profiler.py     # CPU profiling & performance
-│   ├── breadcrumbs.py      # Investigation tracking
-│   ├── visualize.py        # Flamegraphs & charts
-│   └── org_report.py       # Org mode report generator
-├── templates/
-│   └── investigation_template.org
-└── examples/
-    └── memory_leak_example.org
+├── skill/                   # The actual skill (what users install)
+│   ├── SKILL.md            # Instructions Claude reads
+│   ├── README.md           # Installation guide
+│   ├── requirements.txt    # Python dependencies
+│   └── scripts/            # All the debugging tools
+│       ├── cdp_client.py   # Chrome DevTools Protocol client
+│       ├── heap_analyzer.py # Heap snapshot analysis
+│       ├── cpu_profiler.py  # CPU profiling & performance
+│       ├── breadcrumbs.py   # Investigation tracking
+│       ├── visualize.py     # Flamegraphs & charts
+│       └── org_report.py    # Org mode report generator
+│
+├── tests/                   # Test suite (33 tests)
+├── examples/                # Example apps and reports
+├── templates/               # Report templates
+└── docs/                    # Documentation
+
+See PROJECT_STRUCTURE.md for complete details.
 ```
 
 ## 🚀 Quick Start
@@ -39,10 +43,12 @@ deno-debugger-skill/
 ### 1. Installation
 
 ```bash
-# Clone or place this skill in your Claude skills directory
-cd /path/to/deno-debugger-skill
+# Clone the repository
+git clone https://github.com/your-org/deno-debug-skill.git
+cd deno-debug-skill
 
-# Install Python dependencies
+# Install the skill
+cd skill/
 pip install -r requirements.txt
 ```
 
@@ -447,6 +453,28 @@ pytest tests/ -v
 # Test against real Deno instance
 python validate.py
 ```
+
+### Sanity Testing with Scenarios
+
+Try the skill with realistic debugging scenarios:
+
+```bash
+# Run a complete scenario (interactive)
+cd examples/scenarios/1_memory_leak/
+./run.sh
+
+# The script will:
+# 1. Start a buggy Deno app with --inspect
+# 2. Show you a prompt to give Claude
+# 3. Let Claude investigate the bug end-to-end
+```
+
+**Available scenarios:**
+- **Memory Leak** - ArrayBuffer accumulation in upload handler
+- **Performance Bottleneck** - Inefficient prime checking and fibonacci
+- **Race Condition** - Missing awaits and concurrent update bugs
+
+See [examples/scenarios/README.md](examples/scenarios/README.md) for details.
 
 **What gets tested:**
 - ✅ CDP connection to Deno
