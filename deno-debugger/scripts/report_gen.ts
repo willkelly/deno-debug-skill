@@ -150,7 +150,12 @@ export class MarkdownReport {
         case "code":
           lines.push(
             ...this.renderCodeSnippet(
-              section.data as { language: string; code: string; caption?: string; filePath?: string },
+              section.data as {
+                language: string;
+                code: string;
+                caption?: string;
+                filePath?: string;
+              },
             ),
           );
           break;
@@ -295,7 +300,9 @@ export class MarkdownReport {
     return lines;
   }
 
-  private renderDataTable(data: { caption: string; rows: Array<Record<string, unknown>> }): string[] {
+  private renderDataTable(
+    data: { caption: string; rows: Array<Record<string, unknown>> },
+  ): string[] {
     const lines: string[] = [];
 
     if (data.caption) {

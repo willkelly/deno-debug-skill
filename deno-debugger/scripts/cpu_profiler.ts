@@ -374,7 +374,9 @@ function interpretAsyncMetrics(
   const promisePct = total > 0 ? (promiseSamples / total * 100) : 0;
   if (promisePct > 20) {
     issues.push(
-      `High Promise overhead (${promisePct.toFixed(1)}% of time) - consider reducing async operations`,
+      `High Promise overhead (${
+        promisePct.toFixed(1)
+      }% of time) - consider reducing async operations`,
     );
   }
 
@@ -415,12 +417,8 @@ export function getFunctionTimes(profile: CPUProfile, urlFilter?: string): Funct
         function: node.callFrame.functionName || "(anonymous)",
         url: node.callFrame.url,
         line: node.callFrame.lineNumber,
-        selfTimePct: profile.totalSamples > 0
-          ? (selfSamples / profile.totalSamples * 100)
-          : 0,
-        totalTimePct: profile.totalSamples > 0
-          ? (totalSamples / profile.totalSamples * 100)
-          : 0,
+        selfTimePct: profile.totalSamples > 0 ? (selfSamples / profile.totalSamples * 100) : 0,
+        totalTimePct: profile.totalSamples > 0 ? (totalSamples / profile.totalSamples * 100) : 0,
         selfSamples,
         totalSamples,
       });

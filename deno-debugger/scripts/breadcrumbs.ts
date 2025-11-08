@@ -234,7 +234,9 @@ export class Breadcrumbs {
         "decision": "⚡",
       };
 
-      lines.push(`## ${i + 1}. ${icon[bc.type] || "•"} ${bc.type.toUpperCase()}: ${bc.description}`);
+      lines.push(
+        `## ${i + 1}. ${icon[bc.type] || "•"} ${bc.type.toUpperCase()}: ${bc.description}`,
+      );
       lines.push(`*${ts.toISOString().replace("T", " ").substring(0, 19)}*`);
       lines.push("");
 
