@@ -15,14 +15,15 @@ Enables:
 """
 
 import json
+from dataclasses import asdict, dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional
-from dataclasses import dataclass, asdict
 from enum import Enum
+from typing import Any, Dict, List, Optional
 
 
 class BreadcrumbType(Enum):
     """Types of breadcrumbs that can be recorded."""
+
     HYPOTHESIS = "hypothesis"
     TEST = "test"
     FINDING = "finding"
@@ -35,6 +36,7 @@ class BreadcrumbType(Enum):
 @dataclass
 class Breadcrumb:
     """A single breadcrumb in the investigation."""
+
     timestamp: str
     type: str
     description: str
@@ -59,7 +61,10 @@ class Breadcrumbs:
     """
 
     def __init__(self, investigation_name: Optional[str] = None):
-        self.investigation_name = investigation_name or f"investigation_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        self.investigation_name = (
+            investigation_name
+            or f"investigation_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        )
         self.breadcrumbs: List[Breadcrumb] = []
         self.start_time = datetime.now()
 
@@ -68,7 +73,7 @@ class Breadcrumbs:
         crumb_type: BreadcrumbType,
         description: str,
         details: Optional[Dict[str, Any]] = None,
-        tags: Optional[List[str]] = None
+        tags: Optional[List[str]] = None,
     ):
         """Internal method to add a breadcrumb."""
         breadcrumb = Breadcrumb(
@@ -76,12 +81,17 @@ class Breadcrumbs:
             type=crumb_type.value,
             description=description,
             details=details or {},
-            tags=tags or []
+            tags=tags or [],
         )
         self.breadcrumbs.append(breadcrumb)
         return breadcrumb
 
-    def add_hypothesis(self, description: str, rationale: Optional[str] = None, tags: Optional[List[str]] = None):
+    def add_hypothesis(
+        self,
+        description: str,
+        rationale: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+    ):
         """
         Record a hypothesis about what might be wrong.
 
@@ -92,16 +102,18 @@ class Breadcrumbs:
         """
         details = {}
         if rationale:
-            details['rationale'] = rationale
+            details["rationale"] = rationale
 
-        return self._add_breadcrumb(BreadcrumbType.HYPOTHESIS, description, details, tags)
+        return self._add_breadcrumb(
+            BreadcrumbType.HYPOTHESIS, description, details, tags
+        )
 
     def add_test(
         self,
         test_name: str,
         description: str,
         details: Optional[Dict[str, Any]] = None,
-        tags: Optional[List[str]] = None
+        tags: Optional[List[str]] = None,
     ):
         """
         Record a test being conducted.
@@ -113,16 +125,18 @@ class Breadcrumbs:
             tags: Optional tags
         """
         test_details = details or {}
-        test_details['test_name'] = test_name
+        test_details["test_name"] = test_name
 
-        return self._add_breadcrumb(BreadcrumbType.TEST, description, test_details, tags)
+        return self._add_breadcrumb(
+            BreadcrumbType.TEST, description, test_details, tags
+        )
 
     def add_finding(
         self,
         finding: str,
         data: Optional[Dict[str, Any]] = None,
         severity: Optional[str] = None,
-        tags: Optional[List[str]] = None
+        tags: Optional[List[str]] = None,
     ):
         """
         Record a finding or discovery.
@@ -135,7 +149,7 @@ class Breadcrumbs:
         """
         details = data or {}
         if severity:
-            details['severity'] = severity
+            details["severity"] = severity
 
         return self._add_breadcrumb(BreadcrumbType.FINDING, finding, details, tags)
 
@@ -144,7 +158,7 @@ class Breadcrumbs:
         decision: str,
         rationale: str,
         alternatives: Optional[List[str]] = None,
-        tags: Optional[List[str]] = None
+        tags: Optional[List[str]] = None,
     ):
         """
         Record a decision made during investigation.
@@ -155,11 +169,9 @@ class Breadcrumbs:
             alternatives: Other options considered
             tags: Optional tags
         """
-        details = {
-            'rationale': rationale
-        }
+        details = {"rationale": rationale}
         if alternatives:
-            details['alternatives'] = alternatives
+            details["alternatives"] = alternatives
 
         return self._add_breadcrumb(BreadcrumbType.DECISION, decision, details, tags)
 
@@ -169,7 +181,7 @@ class Breadcrumbs:
         location: str,
         description: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
-        tags: Optional[List[str]] = None
+        tags: Optional[List[str]] = None,
     ):
         """
         Record data captured during investigation.
@@ -181,8 +193,8 @@ class Breadcrumbs:
             metadata: Additional metadata
         """
         details = metadata or {}
-        details['data_type'] = data_type
-        details['location'] = location
+        details["data_type"] = data_type
+        details["location"] = location
 
         desc = description or f"{data_type} captured at {location}"
 
@@ -196,7 +208,7 @@ class Breadcrumbs:
         self,
         question: str,
         answer: Optional[str] = None,
-        tags: Optional[List[str]] = None
+        tags: Optional[List[str]] = None,
     ):
         """
         Record a question (and optionally its answer).
@@ -208,7 +220,7 @@ class Breadcrumbs:
         """
         details = {}
         if answer:
-            details['answer'] = answer
+            details["answer"] = answer
 
         return self._add_breadcrumb(BreadcrumbType.QUESTION, question, details, tags)
 
@@ -217,8 +229,8 @@ class Breadcrumbs:
         if 0 <= question_index < len(self.breadcrumbs):
             crumb = self.breadcrumbs[question_index]
             if crumb.type == BreadcrumbType.QUESTION.value:
-                crumb.details['answer'] = answer
-                crumb.details['answered_at'] = datetime.now().isoformat()
+                crumb.details["answer"] = answer
+                crumb.details["answered_at"] = datetime.now().isoformat()
 
     def get_timeline(self) -> List[Breadcrumb]:
         """Get all breadcrumbs in chronological order."""
@@ -241,11 +253,11 @@ class Breadcrumbs:
             type_counts[bc_type.value] = len(self.get_by_type(bc_type))
 
         return {
-            'investigation_name': self.investigation_name,
-            'start_time': self.start_time.isoformat(),
-            'duration_seconds': duration.total_seconds(),
-            'breadcrumb_count': len(self.breadcrumbs),
-            'type_counts': type_counts,
+            "investigation_name": self.investigation_name,
+            "start_time": self.start_time.isoformat(),
+            "duration_seconds": duration.total_seconds(),
+            "breadcrumb_count": len(self.breadcrumbs),
+            "type_counts": type_counts,
         }
 
     def to_org_timeline(self) -> str:
@@ -260,7 +272,7 @@ class Breadcrumbs:
             f"  :PROPERTIES:",
             f"  :START_TIME: {self.start_time.isoformat()}",
             f"  :END:",
-            ""
+            "",
         ]
 
         for i, bc in enumerate(self.breadcrumbs, 1):
@@ -270,14 +282,14 @@ class Breadcrumbs:
 
             # Create heading
             icon = {
-                'hypothesis': '❓',
-                'test': '🧪',
-                'finding': '🔍',
-                'decision': '⚡',
-                'data': '💾',
-                'note': '📝',
-                'question': '❔'
-            }.get(bc.type, '•')
+                "hypothesis": "❓",
+                "test": "🧪",
+                "finding": "🔍",
+                "decision": "⚡",
+                "data": "💾",
+                "note": "📝",
+                "question": "❔",
+            }.get(bc.type, "•")
 
             lines.append(f"** {icon} {bc.type.upper()}: {bc.description}")
             lines.append(f"   {org_ts}")
@@ -298,7 +310,7 @@ class Breadcrumbs:
 
             lines.append("")
 
-        return '\n'.join(lines)
+        return "\n".join(lines)
 
     def to_markdown_timeline(self) -> str:
         """
@@ -310,21 +322,21 @@ class Breadcrumbs:
         lines = [
             f"# Investigation Timeline: {self.investigation_name}",
             f"Started: {self.start_time.isoformat()}",
-            ""
+            "",
         ]
 
         for i, bc in enumerate(self.breadcrumbs, 1):
             ts = datetime.fromisoformat(bc.timestamp)
 
             icon = {
-                'hypothesis': '❓',
-                'test': '🧪',
-                'finding': '🔍',
-                'decision': '⚡',
-                'data': '💾',
-                'note': '📝',
-                'question': '❔'
-            }.get(bc.type, '•')
+                "hypothesis": "❓",
+                "test": "🧪",
+                "finding": "🔍",
+                "decision": "⚡",
+                "data": "💾",
+                "note": "📝",
+                "question": "❔",
+            }.get(bc.type, "•")
 
             lines.append(f"## {i}. {icon} {bc.type.upper()}: {bc.description}")
             lines.append(f"*{ts.strftime('%Y-%m-%d %H:%M:%S')}*")
@@ -341,7 +353,7 @@ class Breadcrumbs:
                 lines.append(f"Tags: `{', '.join(bc.tags)}`")
                 lines.append("")
 
-        return '\n'.join(lines)
+        return "\n".join(lines)
 
     def save(self, file_path: str):
         """
@@ -351,19 +363,19 @@ class Breadcrumbs:
             file_path: Output file path
         """
         data = {
-            'investigation_name': self.investigation_name,
-            'start_time': self.start_time.isoformat(),
-            'breadcrumbs': [bc.to_dict() for bc in self.breadcrumbs],
-            'summary': self.get_summary()
+            "investigation_name": self.investigation_name,
+            "start_time": self.start_time.isoformat(),
+            "breadcrumbs": [bc.to_dict() for bc in self.breadcrumbs],
+            "summary": self.get_summary(),
         }
 
-        with open(file_path, 'w') as f:
+        with open(file_path, "w") as f:
             json.dump(data, f, indent=2)
 
         print(f"Breadcrumbs saved to {file_path}")
 
     @classmethod
-    def load(cls, file_path: str) -> 'Breadcrumbs':
+    def load(cls, file_path: str) -> "Breadcrumbs":
         """
         Load breadcrumbs from JSON file.
 
@@ -373,19 +385,19 @@ class Breadcrumbs:
         Returns:
             Breadcrumbs instance
         """
-        with open(file_path, 'r') as f:
+        with open(file_path, "r") as f:
             data = json.load(f)
 
-        bc = cls(investigation_name=data['investigation_name'])
-        bc.start_time = datetime.fromisoformat(data['start_time'])
+        bc = cls(investigation_name=data["investigation_name"])
+        bc.start_time = datetime.fromisoformat(data["start_time"])
 
-        for crumb_data in data['breadcrumbs']:
+        for crumb_data in data["breadcrumbs"]:
             bc.breadcrumbs.append(Breadcrumb(**crumb_data))
 
         return bc
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     print("Breadcrumbs - Example Usage")
     print("============================")
     print()

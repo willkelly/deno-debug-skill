@@ -10,16 +10,17 @@ Provides tools to:
 """
 
 import json
-import asyncio
-from typing import Dict, List, Any, Optional, Tuple
-from collections import defaultdict, Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
+
 import pandas as pd
 
 
 @dataclass
 class ProfileNode:
     """Represents a node in the CPU profile call tree."""
+
     node_id: int
     function_name: str
     script_id: int
@@ -43,10 +44,10 @@ class CPUProfile:
         self.raw_data = profile_data
         self.nodes = []
         self.node_by_id = {}
-        self.start_time = profile_data.get('startTime', 0)
-        self.end_time = profile_data.get('endTime', 0)
-        self.samples = profile_data.get('samples', [])
-        self.time_deltas = profile_data.get('timeDeltas', [])
+        self.start_time = profile_data.get("startTime", 0)
+        self.end_time = profile_data.get("endTime", 0)
+        self.samples = profile_data.get("samples", [])
+        self.time_deltas = profile_data.get("timeDeltas", [])
 
         # Parse nodes
         self._parse_nodes()
@@ -59,18 +60,20 @@ class CPUProfile:
 
     def _parse_nodes(self):
         """Parse profile nodes."""
-        for node_data in self.raw_data.get('nodes', []):
+        for node_data in self.raw_data.get("nodes", []):
             node = ProfileNode(
-                node_id=node_data.get('id'),
-                function_name=node_data.get('callFrame', {}).get('functionName', '(anonymous)'),
-                script_id=node_data.get('callFrame', {}).get('scriptId', 0),
-                url=node_data.get('callFrame', {}).get('url', ''),
-                line_number=node_data.get('callFrame', {}).get('lineNumber', -1),
-                column_number=node_data.get('callFrame', {}).get('columnNumber', -1),
-                hit_count=node_data.get('hitCount', 0),
-                children=node_data.get('children', []),
-                bailout_reason=node_data.get('bailoutReason', ''),
-                deopt_reason=node_data.get('deoptReason', '')
+                node_id=node_data.get("id"),
+                function_name=node_data.get("callFrame", {}).get(
+                    "functionName", "(anonymous)"
+                ),
+                script_id=node_data.get("callFrame", {}).get("scriptId", 0),
+                url=node_data.get("callFrame", {}).get("url", ""),
+                line_number=node_data.get("callFrame", {}).get("lineNumber", -1),
+                column_number=node_data.get("callFrame", {}).get("columnNumber", -1),
+                hit_count=node_data.get("hitCount", 0),
+                children=node_data.get("children", []),
+                bailout_reason=node_data.get("bailoutReason", ""),
+                deopt_reason=node_data.get("deoptReason", ""),
             )
             self.nodes.append(node)
             self.node_by_id[node.node_id] = node
@@ -93,9 +96,13 @@ class CPUProfile:
         # Calculate inclusive time (including children)
         self.inclusive_samples = {}
         for node in self.nodes:
-            self.inclusive_samples[node.node_id] = self._get_inclusive_samples(node.node_id)
+            self.inclusive_samples[node.node_id] = self._get_inclusive_samples(
+                node.node_id
+            )
 
-    def _get_inclusive_samples(self, node_id: int, visited: Optional[set] = None) -> int:
+    def _get_inclusive_samples(
+        self, node_id: int, visited: Optional[set] = None
+    ) -> int:
         """Recursively calculate samples including all children."""
         if visited is None:
             visited = set()
@@ -127,25 +134,37 @@ class CPUProfile:
                 self_samples = node.hit_count
                 total_samples = self.inclusive_samples.get(node.node_id, 0)
 
-                data.append({
-                    'function_name': node.function_name or '(anonymous)',
-                    'url': node.url,
-                    'line': node.line_number,
-                    'self_samples': self_samples,
-                    'total_samples': total_samples,
-                    'self_pct': (self_samples / self.total_samples * 100) if self.total_samples > 0 else 0,
-                    'total_pct': (total_samples / self.total_samples * 100) if self.total_samples > 0 else 0,
-                    'bailout_reason': node.bailout_reason,
-                    'deopt_reason': node.deopt_reason,
-                })
+                data.append(
+                    {
+                        "function_name": node.function_name or "(anonymous)",
+                        "url": node.url,
+                        "line": node.line_number,
+                        "self_samples": self_samples,
+                        "total_samples": total_samples,
+                        "self_pct": (
+                            (self_samples / self.total_samples * 100)
+                            if self.total_samples > 0
+                            else 0
+                        ),
+                        "total_pct": (
+                            (total_samples / self.total_samples * 100)
+                            if self.total_samples > 0
+                            else 0
+                        ),
+                        "bailout_reason": node.bailout_reason,
+                        "deopt_reason": node.deopt_reason,
+                    }
+                )
 
         df = pd.DataFrame(data)
         if not df.empty:
-            df = df.sort_values('total_samples', ascending=False).head(limit)
+            df = df.sort_values("total_samples", ascending=False).head(limit)
 
         return df
 
-    def get_call_tree(self, root_id: Optional[int] = None, max_depth: int = 10) -> List[Dict]:
+    def get_call_tree(
+        self, root_id: Optional[int] = None, max_depth: int = 10
+    ) -> List[Dict]:
         """
         Get call tree starting from a node.
 
@@ -158,7 +177,9 @@ class CPUProfile:
         """
         if root_id is None:
             # Find root node (node with no parent)
-            root_candidates = [n.node_id for n in self.nodes if n.node_id not in self.parent_map]
+            root_candidates = [
+                n.node_id for n in self.nodes if n.node_id not in self.parent_map
+            ]
             if not root_candidates:
                 return []
             root_id = root_candidates[0]
@@ -172,18 +193,18 @@ class CPUProfile:
                 return None
 
             tree_node = {
-                'function': node.function_name or '(anonymous)',
-                'url': node.url,
-                'line': node.line_number,
-                'self_samples': node.hit_count,
-                'total_samples': self.inclusive_samples.get(node_id, 0),
-                'children': []
+                "function": node.function_name or "(anonymous)",
+                "url": node.url,
+                "line": node.line_number,
+                "self_samples": node.hit_count,
+                "total_samples": self.inclusive_samples.get(node_id, 0),
+                "children": [],
             }
 
             for child_id in self.children_map.get(node_id, []):
                 child_tree = build_tree(child_id, depth + 1)
                 if child_tree:
-                    tree_node['children'].append(child_tree)
+                    tree_node["children"].append(child_tree)
 
             return tree_node
 
@@ -205,18 +226,20 @@ class CPUProfile:
                 issues.append(f"Deopt: {node.deopt_reason}")
 
             if issues:
-                data.append({
-                    'function_name': node.function_name or '(anonymous)',
-                    'url': node.url,
-                    'line': node.line_number,
-                    'self_samples': node.hit_count,
-                    'total_samples': self.inclusive_samples.get(node.node_id, 0),
-                    'issues': '; '.join(issues)
-                })
+                data.append(
+                    {
+                        "function_name": node.function_name or "(anonymous)",
+                        "url": node.url,
+                        "line": node.line_number,
+                        "self_samples": node.hit_count,
+                        "total_samples": self.inclusive_samples.get(node.node_id, 0),
+                        "issues": "; ".join(issues),
+                    }
+                )
 
         df = pd.DataFrame(data)
         if not df.empty:
-            df = df.sort_values('total_samples', ascending=False)
+            df = df.sort_values("total_samples", ascending=False)
 
         return df
 
@@ -231,10 +254,12 @@ class CPUProfile:
         total_time_ms = total_time_us / 1000
 
         return {
-            'total_time_ms': total_time_ms,
-            'total_time_s': total_time_ms / 1000,
-            'sample_count': self.total_samples,
-            'sample_rate_hz': self.total_samples / (total_time_ms / 1000) if total_time_ms > 0 else 0,
+            "total_time_ms": total_time_ms,
+            "total_time_s": total_time_ms / 1000,
+            "sample_count": self.total_samples,
+            "sample_rate_hz": (
+                self.total_samples / (total_time_ms / 1000) if total_time_ms > 0 else 0
+            ),
         }
 
 
@@ -248,7 +273,7 @@ def load_profile(file_path: str) -> CPUProfile:
     Returns:
         Parsed CPUProfile object
     """
-    with open(file_path, 'r') as f:
+    with open(file_path, "r") as f:
         data = json.load(f)
     return CPUProfile(data)
 
@@ -279,7 +304,7 @@ async def stop_profiling(cdp_client, output_path: Optional[str] = None) -> CPUPr
     print("CPU profiling stopped")
 
     if output_path:
-        with open(output_path, 'w') as f:
+        with open(output_path, "w") as f:
             json.dump(profile_data, f, indent=2)
         print(f"Profile saved to {output_path}")
 
@@ -301,7 +326,11 @@ def analyze_hot_paths(profile: CPUProfile, min_pct: float = 1.0) -> pd.DataFrame
     hot_nodes = []
     for node in profile.nodes:
         total_samples = profile.inclusive_samples.get(node.node_id, 0)
-        pct = (total_samples / profile.total_samples * 100) if profile.total_samples > 0 else 0
+        pct = (
+            (total_samples / profile.total_samples * 100)
+            if profile.total_samples > 0
+            else 0
+        )
 
         if pct >= min_pct:
             # Build path from root to this node
@@ -309,21 +338,25 @@ def analyze_hot_paths(profile: CPUProfile, min_pct: float = 1.0) -> pd.DataFrame
             current_id = node.node_id
             while current_id in profile.parent_map:
                 current_node = profile.node_by_id[current_id]
-                path.insert(0, f"{current_node.function_name}:{current_node.line_number}")
+                path.insert(
+                    0, f"{current_node.function_name}:{current_node.line_number}"
+                )
                 current_id = profile.parent_map[current_id]
 
-            hot_nodes.append({
-                'function': node.function_name or '(anonymous)',
-                'url': node.url,
-                'line': node.line_number,
-                'pct': pct,
-                'samples': total_samples,
-                'call_path': ' -> '.join(path) if path else node.function_name
-            })
+            hot_nodes.append(
+                {
+                    "function": node.function_name or "(anonymous)",
+                    "url": node.url,
+                    "line": node.line_number,
+                    "pct": pct,
+                    "samples": total_samples,
+                    "call_path": " -> ".join(path) if path else node.function_name,
+                }
+            )
 
     df = pd.DataFrame(hot_nodes)
     if not df.empty:
-        df = df.sort_values('pct', ascending=False)
+        df = df.sort_values("pct", ascending=False)
 
     return df
 
@@ -336,42 +369,62 @@ def detect_async_issues(profile: CPUProfile) -> Dict[str, Any]:
         Dict with analysis of async patterns
     """
     # Look for common async patterns
-    promise_nodes = [n for n in profile.nodes if 'Promise' in n.function_name or 'async' in n.url.lower()]
-    await_nodes = [n for n in profile.nodes if 'await' in n.function_name.lower()]
-    callback_nodes = [n for n in profile.nodes if 'callback' in n.function_name.lower()]
+    promise_nodes = [
+        n
+        for n in profile.nodes
+        if "Promise" in n.function_name or "async" in n.url.lower()
+    ]
+    await_nodes = [n for n in profile.nodes if "await" in n.function_name.lower()]
+    callback_nodes = [n for n in profile.nodes if "callback" in n.function_name.lower()]
 
-    promise_samples = sum(profile.inclusive_samples.get(n.node_id, 0) for n in promise_nodes)
-    await_samples = sum(profile.inclusive_samples.get(n.node_id, 0) for n in await_nodes)
-    callback_samples = sum(profile.inclusive_samples.get(n.node_id, 0) for n in callback_nodes)
+    promise_samples = sum(
+        profile.inclusive_samples.get(n.node_id, 0) for n in promise_nodes
+    )
+    await_samples = sum(
+        profile.inclusive_samples.get(n.node_id, 0) for n in await_nodes
+    )
+    callback_samples = sum(
+        profile.inclusive_samples.get(n.node_id, 0) for n in callback_nodes
+    )
 
     total = profile.total_samples
 
     return {
-        'promise_related_pct': (promise_samples / total * 100) if total > 0 else 0,
-        'await_related_pct': (await_samples / total * 100) if total > 0 else 0,
-        'callback_related_pct': (callback_samples / total * 100) if total > 0 else 0,
-        'promise_node_count': len(promise_nodes),
-        'await_node_count': len(await_nodes),
-        'callback_node_count': len(callback_nodes),
-        'analysis': _interpret_async_metrics(promise_samples, await_samples, callback_samples, total)
+        "promise_related_pct": (promise_samples / total * 100) if total > 0 else 0,
+        "await_related_pct": (await_samples / total * 100) if total > 0 else 0,
+        "callback_related_pct": (callback_samples / total * 100) if total > 0 else 0,
+        "promise_node_count": len(promise_nodes),
+        "await_node_count": len(await_nodes),
+        "callback_node_count": len(callback_nodes),
+        "analysis": _interpret_async_metrics(
+            promise_samples, await_samples, callback_samples, total
+        ),
     }
 
 
-def _interpret_async_metrics(promise_samples: int, await_samples: int, callback_samples: int, total: int) -> str:
+def _interpret_async_metrics(
+    promise_samples: int, await_samples: int, callback_samples: int, total: int
+) -> str:
     """Interpret async metrics and provide analysis."""
     issues = []
 
     promise_pct = (promise_samples / total * 100) if total > 0 else 0
     if promise_pct > 20:
-        issues.append(f"High Promise overhead ({promise_pct:.1f}% of time) - consider reducing async operations")
+        issues.append(
+            f"High Promise overhead ({promise_pct:.1f}% of time) - consider reducing async operations"
+        )
 
     await_pct = (await_samples / total * 100) if total > 0 else 0
     if await_pct > 15:
-        issues.append(f"Significant time in await ({await_pct:.1f}%) - check for blocking async operations")
+        issues.append(
+            f"Significant time in await ({await_pct:.1f}%) - check for blocking async operations"
+        )
 
     callback_pct = (callback_samples / total * 100) if total > 0 else 0
     if callback_pct > 10:
-        issues.append(f"Callback overhead detected ({callback_pct:.1f}%) - consider using async/await")
+        issues.append(
+            f"Callback overhead detected ({callback_pct:.1f}%) - consider using async/await"
+        )
 
     if not issues:
         return "No significant async performance issues detected"
@@ -379,7 +432,9 @@ def _interpret_async_metrics(promise_samples: int, await_samples: int, callback_
     return "; ".join(issues)
 
 
-def get_function_times(profile: CPUProfile, url_filter: Optional[str] = None) -> pd.DataFrame:
+def get_function_times(
+    profile: CPUProfile, url_filter: Optional[str] = None
+) -> pd.DataFrame:
     """
     Get time spent in each function.
 
@@ -399,24 +454,34 @@ def get_function_times(profile: CPUProfile, url_filter: Optional[str] = None) ->
         total_samples = profile.inclusive_samples.get(node.node_id, 0)
 
         if total_samples > 0:
-            data.append({
-                'function': node.function_name or '(anonymous)',
-                'url': node.url,
-                'line': node.line_number,
-                'self_time_pct': (self_samples / profile.total_samples * 100) if profile.total_samples > 0 else 0,
-                'total_time_pct': (total_samples / profile.total_samples * 100) if profile.total_samples > 0 else 0,
-                'self_samples': self_samples,
-                'total_samples': total_samples,
-            })
+            data.append(
+                {
+                    "function": node.function_name or "(anonymous)",
+                    "url": node.url,
+                    "line": node.line_number,
+                    "self_time_pct": (
+                        (self_samples / profile.total_samples * 100)
+                        if profile.total_samples > 0
+                        else 0
+                    ),
+                    "total_time_pct": (
+                        (total_samples / profile.total_samples * 100)
+                        if profile.total_samples > 0
+                        else 0
+                    ),
+                    "self_samples": self_samples,
+                    "total_samples": total_samples,
+                }
+            )
 
     df = pd.DataFrame(data)
     if not df.empty:
-        df = df.sort_values('total_time_pct', ascending=False)
+        df = df.sort_values("total_time_pct", ascending=False)
 
     return df
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     print("CPU Profiler - Example Usage")
     print("=============================")
     print()

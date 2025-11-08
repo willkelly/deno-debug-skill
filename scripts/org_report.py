@@ -10,9 +10,8 @@ Generates comprehensive reports with:
 - Actionable recommendations
 """
 
-from typing import List, Dict, Any, Optional
 from datetime import datetime
-from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 
 class OrgReport:
@@ -41,10 +40,7 @@ class OrgReport:
         Args:
             text: Summary text
         """
-        section = {
-            'type': 'summary',
-            'content': text
-        }
+        section = {"type": "summary", "content": text}
         self.sections.append(section)
 
     def add_timeline(self):
@@ -52,10 +48,7 @@ class OrgReport:
         if not self.breadcrumbs:
             return
 
-        section = {
-            'type': 'timeline',
-            'content': self.breadcrumbs.to_org_timeline()
-        }
+        section = {"type": "timeline", "content": self.breadcrumbs.to_org_timeline()}
         self.sections.append(section)
 
     def add_section(self, heading: str, content: str, level: int = 2):
@@ -68,10 +61,10 @@ class OrgReport:
             level: Heading level (1-6)
         """
         section = {
-            'type': 'custom',
-            'heading': heading,
-            'content': content,
-            'level': level
+            "type": "custom",
+            "heading": heading,
+            "content": content,
+            "level": level,
         }
         self.sections.append(section)
 
@@ -80,7 +73,7 @@ class OrgReport:
         language: str,
         code: str,
         caption: Optional[str] = None,
-        line_numbers: bool = True
+        line_numbers: bool = True,
     ):
         """
         Add a code snippet.
@@ -92,11 +85,11 @@ class OrgReport:
             line_numbers: Whether to show line numbers
         """
         section = {
-            'type': 'code',
-            'language': language,
-            'code': code,
-            'caption': caption,
-            'line_numbers': line_numbers
+            "type": "code",
+            "language": language,
+            "code": code,
+            "caption": caption,
+            "line_numbers": line_numbers,
         }
         self.sections.append(section)
 
@@ -105,7 +98,7 @@ class OrgReport:
         name: str,
         python_code: str,
         data_path: Optional[str] = None,
-        description: Optional[str] = None
+        description: Optional[str] = None,
     ):
         """
         Add an executable Python analysis block.
@@ -117,11 +110,11 @@ class OrgReport:
             description: Optional description
         """
         section = {
-            'type': 'analysis',
-            'name': name,
-            'code': python_code,
-            'data_path': data_path,
-            'description': description
+            "type": "analysis",
+            "name": name,
+            "code": python_code,
+            "data_path": data_path,
+            "description": description,
         }
         self.sections.append(section)
 
@@ -129,7 +122,7 @@ class OrgReport:
         self,
         image_path: str,
         caption: Optional[str] = None,
-        description: Optional[str] = None
+        description: Optional[str] = None,
     ):
         """
         Add a visualization image.
@@ -140,10 +133,10 @@ class OrgReport:
             description: Optional description
         """
         section = {
-            'type': 'visualization',
-            'image_path': image_path,
-            'caption': caption,
-            'description': description
+            "type": "visualization",
+            "image_path": image_path,
+            "caption": caption,
+            "description": description,
         }
         self.sections.append(section)
 
@@ -152,7 +145,7 @@ class OrgReport:
         finding: str,
         severity: str = "medium",
         details: Optional[str] = None,
-        evidence: Optional[List[str]] = None
+        evidence: Optional[List[str]] = None,
     ):
         """
         Add a key finding.
@@ -164,11 +157,11 @@ class OrgReport:
             evidence: List of evidence items
         """
         section = {
-            'type': 'finding',
-            'finding': finding,
-            'severity': severity,
-            'details': details,
-            'evidence': evidence or []
+            "type": "finding",
+            "finding": finding,
+            "severity": severity,
+            "details": details,
+            "evidence": evidence or [],
         }
         self.sections.append(section)
 
@@ -179,13 +172,15 @@ class OrgReport:
         Args:
             recommendations: List of dicts with 'title', 'description', 'priority'
         """
-        section = {
-            'type': 'recommendations',
-            'items': recommendations
-        }
+        section = {"type": "recommendations", "items": recommendations}
         self.sections.append(section)
 
-    def add_table(self, data: List[List[str]], headers: Optional[List[str]] = None, caption: Optional[str] = None):
+    def add_table(
+        self,
+        data: List[List[str]],
+        headers: Optional[List[str]] = None,
+        caption: Optional[str] = None,
+    ):
         """
         Add a table.
 
@@ -195,10 +190,10 @@ class OrgReport:
             caption: Optional caption
         """
         section = {
-            'type': 'table',
-            'data': data,
-            'headers': headers,
-            'caption': caption
+            "type": "table",
+            "data": data,
+            "headers": headers,
+            "caption": caption,
         }
         self.sections.append(section)
 
@@ -212,142 +207,138 @@ class OrgReport:
             "#+STARTUP: overview",
             "",
             "* Executive Summary",
-            ""
+            "",
         ]
-        return '\n'.join(lines)
+        return "\n".join(lines)
 
     def _render_section(self, section: Dict[str, Any]) -> str:
         """Render a single section."""
-        if section['type'] == 'summary':
-            return section['content'] + "\n"
+        if section["type"] == "summary":
+            return section["content"] + "\n"
 
-        elif section['type'] == 'timeline':
-            return section['content'] + "\n"
+        elif section["type"] == "timeline":
+            return section["content"] + "\n"
 
-        elif section['type'] == 'custom':
-            level = '*' * section.get('level', 2)
+        elif section["type"] == "custom":
+            level = "*" * section.get("level", 2)
             return f"{level} {section['heading']}\n\n{section['content']}\n"
 
-        elif section['type'] == 'code':
+        elif section["type"] == "code":
             lines = []
-            if section.get('caption'):
+            if section.get("caption"):
                 lines.append(f"#+CAPTION: {section['caption']}")
 
-            options = "-n" if section.get('line_numbers') else ""
+            options = "-n" if section.get("line_numbers") else ""
             lines.append(f"#+BEGIN_SRC {section['language']} {options}")
-            lines.append(section['code'])
+            lines.append(section["code"])
             lines.append("#+END_SRC")
             lines.append("")
-            return '\n'.join(lines)
+            return "\n".join(lines)
 
-        elif section['type'] == 'analysis':
-            lines = [
-                f"** {section['name']}",
-                ""
-            ]
+        elif section["type"] == "analysis":
+            lines = [f"** {section['name']}", ""]
 
-            if section.get('description'):
-                lines.append(section['description'])
+            if section.get("description"):
+                lines.append(section["description"])
                 lines.append("")
 
-            if section.get('data_path'):
+            if section.get("data_path"):
                 lines.append(f"Data location: ~{section['data_path']}~")
                 lines.append("")
 
             lines.append("#+BEGIN_SRC python :results output :exports both")
-            lines.append(section['code'])
+            lines.append(section["code"])
             lines.append("#+END_SRC")
             lines.append("")
 
-            return '\n'.join(lines)
+            return "\n".join(lines)
 
-        elif section['type'] == 'visualization':
+        elif section["type"] == "visualization":
             lines = []
 
-            if section.get('description'):
-                lines.append(section['description'])
+            if section.get("description"):
+                lines.append(section["description"])
                 lines.append("")
 
-            if section.get('caption'):
+            if section.get("caption"):
                 lines.append(f"#+CAPTION: {section['caption']}")
 
             lines.append(f"[[file:{section['image_path']}]]")
             lines.append("")
 
-            return '\n'.join(lines)
+            return "\n".join(lines)
 
-        elif section['type'] == 'finding':
+        elif section["type"] == "finding":
             severity_icon = {
-                'low': '🟢',
-                'medium': '🟡',
-                'high': '🟠',
-                'critical': '🔴'
-            }.get(section['severity'], '⚪')
+                "low": "🟢",
+                "medium": "🟡",
+                "high": "🟠",
+                "critical": "🔴",
+            }.get(section["severity"], "⚪")
 
             lines = [
                 f"** {severity_icon} Finding: {section['finding']}",
                 f"   :PROPERTIES:",
                 f"   :SEVERITY: {section['severity']}",
                 f"   :END:",
-                ""
+                "",
             ]
 
-            if section.get('details'):
-                lines.append(section['details'])
+            if section.get("details"):
+                lines.append(section["details"])
                 lines.append("")
 
-            if section.get('evidence'):
+            if section.get("evidence"):
                 lines.append("*** Evidence")
-                for item in section['evidence']:
+                for item in section["evidence"]:
                     lines.append(f"- {item}")
                 lines.append("")
 
-            return '\n'.join(lines)
+            return "\n".join(lines)
 
-        elif section['type'] == 'recommendations':
-            lines = [
-                "* Recommendations",
-                ""
-            ]
+        elif section["type"] == "recommendations":
+            lines = ["* Recommendations", ""]
 
-            for i, rec in enumerate(section['items'], 1):
-                priority = rec.get('priority', 'medium')
+            for i, rec in enumerate(section["items"], 1):
+                priority = rec.get("priority", "medium")
                 priority_icon = {
-                    'low': '🔵',
-                    'medium': '🟡',
-                    'high': '🔴',
-                    'critical': '⚠️'
-                }.get(priority, '•')
+                    "low": "🔵",
+                    "medium": "🟡",
+                    "high": "🔴",
+                    "critical": "⚠️",
+                }.get(priority, "•")
 
                 lines.append(f"** {priority_icon} {rec.get('title', 'Recommendation')}")
                 lines.append(f"   :PROPERTIES:")
                 lines.append(f"   :PRIORITY: {priority}")
                 lines.append(f"   :END:")
                 lines.append("")
-                lines.append(rec.get('description', ''))
+                lines.append(rec.get("description", ""))
                 lines.append("")
 
-            return '\n'.join(lines)
+            return "\n".join(lines)
 
-        elif section['type'] == 'table':
+        elif section["type"] == "table":
             lines = []
 
-            if section.get('caption'):
+            if section.get("caption"):
                 lines.append(f"#+CAPTION: {section['caption']}")
 
             # Render table
-            headers = section.get('headers')
-            data = section.get('data', [])
+            headers = section.get("headers")
+            data = section.get("data", [])
 
             if headers:
-                lines.append('| ' + ' | '.join(headers) + ' |')
-                lines.append('|' + '|'.join(['-' * (len(h) + 2) for h in headers]) + '|')
+                lines.append("| " + " | ".join(headers) + " |")
+                lines.append(
+                    "|" + "|".join(["-" * (len(h) + 2) for h in headers]) + "|"
+                )
 
             for row in data:
-                lines.append('| ' + ' | '.join(str(cell) for cell in row) + ' |')
+                lines.append("| " + " | ".join(str(cell) for cell in row) + " |")
 
             lines.append("")
-            return '\n'.join(lines)
+            return "\n".join(lines)
 
         return ""
 
@@ -370,10 +361,12 @@ class OrgReport:
 
         if self.breadcrumbs:
             summary = self.breadcrumbs.get_summary()
-            parts.append(f"  - Investigation Duration: {summary['duration_seconds']:.1f}s")
+            parts.append(
+                f"  - Investigation Duration: {summary['duration_seconds']:.1f}s"
+            )
             parts.append(f"  - Breadcrumbs Recorded: {summary['breadcrumb_count']}")
 
-        return '\n'.join(parts)
+        return "\n".join(parts)
 
     def save(self, output_path: str):
         """
@@ -385,10 +378,10 @@ class OrgReport:
         content = self.generate()
 
         # Ensure .org extension
-        if not output_path.endswith('.org'):
-            output_path += '.org'
+        if not output_path.endswith(".org"):
+            output_path += ".org"
 
-        with open(output_path, 'w') as f:
+        with open(output_path, "w") as f:
             f.write(content)
 
         print(f"Report saved to {output_path}")
@@ -403,7 +396,7 @@ def create_quick_report(
     breadcrumbs,
     findings: List[Dict],
     recommendations: List[Dict],
-    output_path: str
+    output_path: str,
 ) -> str:
     """
     Quickly create a complete report with common sections.
@@ -438,7 +431,7 @@ def create_quick_report(
     return report.save(output_path)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     print("Org Report - Example Usage")
     print("===========================")
     print()
