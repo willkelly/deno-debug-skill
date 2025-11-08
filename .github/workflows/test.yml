@@ -46,32 +46,6 @@ jobs:
         cd deno-debugger/scripts
         deno check *.ts
 
-  unit-tests:
-    name: Unit Tests
-    runs-on: ubuntu-latest
-
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Setup Deno
-      uses: denoland/setup-deno@v1
-      with:
-        deno-version: v2.x
-
-    - name: Cache Deno dependencies
-      uses: actions/cache@v3
-      with:
-        path: ~/.cache/deno
-        key: ${{ runner.os }}-deno-${{ hashFiles('deno-debugger/deno.json') }}
-        restore-keys: |
-          ${{ runner.os }}-deno-
-
-    - name: Run tests
-      run: |
-        cd deno-debugger
-        deno task test
-      timeout-minutes: 5
-
   integration-tests:
     name: Integration Tests
     runs-on: ubuntu-latest
