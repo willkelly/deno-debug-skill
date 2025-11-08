@@ -88,6 +88,10 @@ class CDPClient:
                     method = data['method']
                     params = data.get('params', {})
 
+                    # Debug: log all events (comment out for production)
+                    if 'HeapProfiler' in method:
+                        print(f"    [DEBUG] Event: {method}")
+
                     # Built-in event handling
                     if method == 'Debugger.paused':
                         self.paused = True
@@ -364,22 +368,65 @@ class CDPClient:
         await self.enable_heap_profiler()
 
         chunks = []
+        done_event = asyncio.Event()
+        progress_done = asyncio.Event()
 
-        def handler(params):
+        async def chunk_handler(params):
             if 'chunk' in params:
                 chunks.append(params['chunk'])
+                # Debug: print chunk progress
+                if len(chunks) % 100 == 0:
+                    print(f"    Received {len(chunks)} chunks...")
+
+        async def progress_handler(params):
+            # Debug: print progress
+            done = params.get('done', 0)
+            total = params.get('total', 0)
+            print(f"    Progress: {done}/{total}")
+
+            # When finished is True, snapshot is complete
+            if params.get('finished'):
+                print(f"    Snapshot complete!")
+                progress_done.set()
 
         # Listen for heap snapshot chunks
-        self.on_event('HeapProfiler.addHeapSnapshotChunk',
-                     lambda p: chunks.append(p.get('chunk', '')))
+        self.on_event('HeapProfiler.addHeapSnapshotChunk', chunk_handler)
 
-        # Request snapshot
-        await self.send_command('HeapProfiler.takeHeapSnapshot', {
-            'reportProgress': report_progress
-        })
+        # Listen for progress (if reportProgress is True)
+        if report_progress:
+            self.on_event('HeapProfiler.reportHeapSnapshotProgress', progress_handler)
 
-        # Wait a moment for chunks to arrive
-        await asyncio.sleep(0.5)
+        # Request snapshot (don't await - command might not return until acknowledged)
+        try:
+            print(f"    Sending takeHeapSnapshot command...")
+            # Send command in background - we'll wait for events instead
+            asyncio.create_task(self.send_command('HeapProfiler.takeHeapSnapshot', {
+                'reportProgress': report_progress
+            }))
+
+            # Wait for progress to indicate completion (if we're tracking progress)
+            # Otherwise wait a bit for chunks
+            if report_progress:
+                print(f"    Waiting for progress completion...")
+                await asyncio.wait_for(progress_done.wait(), timeout=30)
+            else:
+                # Wait for chunks to arrive - increase timeout for large heaps
+                print(f"    Waiting for chunks...")
+                await asyncio.sleep(5.0)
+
+            print(f"    Got {len(chunks)} total chunks")
+
+        except asyncio.TimeoutError:
+            print(f"  Warning: Heap snapshot timed out, got {len(chunks)} chunks")
+
+        finally:
+            # Clean up event handlers
+            if 'HeapProfiler.addHeapSnapshotChunk' in self.event_handlers:
+                if chunk_handler in self.event_handlers['HeapProfiler.addHeapSnapshotChunk']:
+                    self.event_handlers['HeapProfiler.addHeapSnapshotChunk'].remove(chunk_handler)
+            if report_progress and 'HeapProfiler.reportHeapSnapshotProgress' in self.event_handlers:
+                if progress_handler in self.event_handlers['HeapProfiler.reportHeapSnapshotProgress']:
+                    self.event_handlers['HeapProfiler.reportHeapSnapshotProgress'].remove(progress_handler)
 
         return ''.join(chunks)
 

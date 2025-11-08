@@ -161,7 +161,7 @@ async def validate_heap_snapshot(client: CDPClient):
     print_test("Testing heap snapshot capture")
 
     try:
-        snapshot_json = await client.take_heap_snapshot()
+        snapshot_json = await client.take_heap_snapshot(report_progress=False)
         print_success(f"Snapshot captured ({len(snapshot_json)} bytes)")
 
         # Save for inspection
