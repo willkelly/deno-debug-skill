@@ -192,7 +192,7 @@ export class CDPClient {
       setTimeout(() => reject(new Error(`Command timeout: ${method}`)), 30000);
     });
 
-    return Promise.race([responsePromise, timeoutPromise]);
+    return await Promise.race([responsePromise, timeoutPromise]);
   }
 
   /**
@@ -445,7 +445,7 @@ export class CDPClient {
     return (result.profile as CPUProfileData) || {} as CPUProfileData;
   }
 
-  async close(): Promise<void> {
+  close(): void {
     if (this.ws) {
       this.ws.close();
       this.ws = null;

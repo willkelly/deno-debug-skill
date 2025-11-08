@@ -9,7 +9,7 @@
  * - Generate performance summaries
  */
 
-import type { CPUCallFrame, CPUProfileData, CPUProfileNode } from "./types.ts";
+import type { CPUCallFrame as _CPUCallFrame, CPUProfileData, CPUProfileNode } from "./types.ts";
 import type { CDPClient } from "./cdp_client.ts";
 
 export interface HotFunction {
@@ -88,7 +88,7 @@ export class CPUProfile {
   public timeDeltas: number[];
   public childrenMap: Map<number, number[]>;
   public parentMap: Map<number, number>;
-  public totalSamples: number;
+  public totalSamples: number = 0;
   public sampleCounts: Map<number, number>;
   public inclusiveSamples: Map<number, number>;
 

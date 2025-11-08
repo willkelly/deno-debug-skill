@@ -47,11 +47,8 @@ jobs:
         deno check *.ts
 
   unit-tests:
-    name: Unit Tests (Deno ${{ matrix.deno-version }})
+    name: Unit Tests
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        deno-version: ["v1.x", "v2.x"]
 
     steps:
     - uses: actions/checkout@v4
@@ -59,7 +56,7 @@ jobs:
     - name: Setup Deno
       uses: denoland/setup-deno@v1
       with:
-        deno-version: ${{ matrix.deno-version }}
+        deno-version: v2.x
 
     - name: Cache Deno dependencies
       uses: actions/cache@v3
@@ -76,11 +73,8 @@ jobs:
       timeout-minutes: 5
 
   integration-tests:
-    name: Integration Tests (Deno ${{ matrix.deno-version }})
+    name: Integration Tests
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        deno-version: ["v1.x", "v2.x"]
 
     steps:
     - uses: actions/checkout@v4
@@ -88,7 +82,7 @@ jobs:
     - name: Setup Deno
       uses: denoland/setup-deno@v1
       with:
-        deno-version: ${{ matrix.deno-version }}
+        deno-version: v2.x
 
     - name: Create output directories
       run: |
@@ -124,7 +118,7 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: test-artifacts-deno-${{ matrix.deno-version }}
+        name: test-artifacts
         path: |
           data/*.heapsnapshot
           data/*.cpuprofile
@@ -144,13 +138,21 @@ jobs:
       with:
         deno-version: v2.x
 
-    - name: Check example apps run
+    - name: Check example apps compile
       run: |
-        # Check memory leak example compiles
+        # Check all scenario apps compile
         cd examples/scenarios/1_memory_leak
         deno check app.ts
 
-        # Check performance example compiles
-        cd ../2_performance
+        cd ../2_performance_bottleneck
+        deno check app.ts
+
+        cd ../3_race_condition
+        deno check app.ts
+
+        cd ../4_state_corruption
+        deno check app.ts
+
+        cd ../5_event_loop_timing
         deno check app.ts
       timeout-minutes: 2

@@ -90,7 +90,7 @@ async function processBatch(orderIds: string[]): Promise<void> {
 }
 
 // HTTP server
-async function startServer() {
+function startServer() {
   console.log("Starting async bug demo server on http://localhost:8002");
   console.log("");
   console.log("Endpoints:");
@@ -105,21 +105,11 @@ async function startServer() {
   console.log("");
   console.log("Then ask Claude to investigate the race conditions!");
 
-  const listener = Deno.listen({ port: 8002 });
-
-  for await (const conn of listener) {
-    handleConnection(conn);
-  }
-}
-
-async function handleConnection(conn: Deno.Conn) {
-  const httpConn = Deno.serveHttp(conn);
-
-  for await (const requestEvent of httpConn) {
-    const url = new URL(requestEvent.request.url);
+  Deno.serve({ port: 8002 }, async (req) => {
+    const url = new URL(req.url);
 
     try {
-      if (url.pathname === "/order" && requestEvent.request.method === "POST") {
+      if (url.pathname === "/order" && req.method === "POST") {
         const productId = url.searchParams.get("product") || "unknown";
         const quantity = parseInt(url.searchParams.get("qty") || "1");
 
@@ -127,49 +117,49 @@ async function handleConnection(conn: Deno.Conn) {
         const orderId = await createOrder(productId, quantity);
 
         // This response is sent before the order is actually saved
-        requestEvent.respondWith(
-          new Response(JSON.stringify({
+        return new Response(
+          JSON.stringify({
             success: true,
             orderId,
             message: "Order created",
-            warning: "⚠️ Actually, the order might not be saved yet due to missing await!"
-          }, null, 2), {
+            warning: "⚠️ Actually, the order might not be saved yet due to missing await!",
+          }, null, 2),
+          {
             status: 201,
             headers: { "content-type": "application/json" },
-          })
+          },
         );
-
-      } else if (url.pathname === "/update" && requestEvent.request.method === "POST") {
+      } else if (url.pathname === "/update" && req.method === "POST") {
         const orderId = url.searchParams.get("order");
         const status = url.searchParams.get("status") || "processing";
 
         if (!orderId) {
-          requestEvent.respondWith(
-            new Response(JSON.stringify({ error: "Missing order parameter" }), {
+          return new Response(
+            JSON.stringify({ error: "Missing order parameter" }),
+            {
               status: 400,
               headers: { "content-type": "application/json" },
-            })
+            },
           );
-          continue;
         }
 
         // Try updating status twice simultaneously to trigger race
         await Promise.all([
           updateOrderStatus(orderId, status),
-          updateOrderStatus(orderId, `${status}-2`)
+          updateOrderStatus(orderId, `${status}-2`),
         ]);
 
-        requestEvent.respondWith(
-          new Response(JSON.stringify({
+        return new Response(
+          JSON.stringify({
             success: true,
-            message: "Status updated (but which one won the race?)"
-          }, null, 2), {
+            message: "Status updated (but which one won the race?)",
+          }, null, 2),
+          {
             status: 200,
             headers: { "content-type": "application/json" },
-          })
+          },
         );
-
-      } else if (url.pathname === "/batch" && requestEvent.request.method === "POST") {
+      } else if (url.pathname === "/batch" && req.method === "POST") {
         const count = parseInt(url.searchParams.get("count") || "5");
 
         // Create some orders first (with bugs)
@@ -180,41 +170,41 @@ async function handleConnection(conn: Deno.Conn) {
         }
 
         // Wait a bit for them to be saved
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise((resolve) => setTimeout(resolve, 200));
 
         // Process batch (with ordering bug)
         await processBatch(orderIds);
 
-        requestEvent.respondWith(
-          new Response(JSON.stringify({
+        return new Response(
+          JSON.stringify({
             success: true,
             processed: orderIds,
-            message: "Batch processed (but in what order?)"
-          }, null, 2), {
+            message: "Batch processed (but in what order?)",
+          }, null, 2),
+          {
             status: 200,
             headers: { "content-type": "application/json" },
-          })
+          },
         );
-
       } else if (url.pathname === "/orders") {
         const allOrders = Array.from(orders.entries()).map(([id, data]) => ({
           id,
-          ...data
+          ...data,
         }));
 
-        requestEvent.respondWith(
-          new Response(JSON.stringify({
+        return new Response(
+          JSON.stringify({
             orders: allOrders,
             count: allOrders.length,
             message: allOrders.length === 0
               ? "No orders yet (they might still be saving!)"
-              : "Orders found"
-          }, null, 2), {
+              : "Orders found",
+          }, null, 2),
+          {
             status: 200,
             headers: { "content-type": "application/json" },
-          })
+          },
         );
-
       } else {
         const body = `
           <html>
@@ -252,22 +242,21 @@ curl -X POST 'http://localhost:8002/batch?count=5'
           </html>
         `;
 
-        requestEvent.respondWith(
-          new Response(body, {
-            status: 200,
-            headers: { "content-type": "text/html" },
-          })
-        );
+        return new Response(body, {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        });
       }
     } catch (error) {
-      requestEvent.respondWith(
-        new Response(JSON.stringify({ error: String(error) }), {
+      return new Response(
+        JSON.stringify({ error: String(error) }),
+        {
           status: 500,
           headers: { "content-type": "application/json" },
-        })
+        },
       );
     }
-  }
+  });
 }
 
 // Start the server
