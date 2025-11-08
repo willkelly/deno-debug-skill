@@ -1,6 +1,6 @@
 ---
 name: deno-debugger
-description: Debug Deno/TypeScript applications using V8 Inspector Protocol. Investigate memory leaks, performance bottlenecks, race conditions, and crashes using heap snapshots, CPU profiling, and breakpoints. All infrastructure is pre-written.
+description: Interactive debugger for Deno/TypeScript applications using the V8 Inspector Protocol. This skill should be used when investigating issues in Deno applications, including memory leaks, performance bottlenecks, race conditions, crashes, or any runtime behavior that requires step-by-step debugging, heap analysis, or CPU profiling. Provides CDP client tools, heap/CPU analyzers, breadcrumb tracking, and automated Org mode report generation.
 ---
 
 # Deno Debugger Skill
