@@ -76,6 +76,41 @@ Generate final Org mode document:
 - `.add_recommendations(items)` - Actionable next steps
 - `.save(output_path)` - Write final .org file
 
+## ⚠️ Known Limitations
+
+### Heap Snapshots with Deno
+
+**Issue**: Deno's V8 inspector does NOT send heap snapshot chunks via CDP.
+
+**Impact**: `take_heap_snapshot()` will return empty data when connected to Deno.
+
+**Verified**: Our CDP client works correctly with Node.js (confirmed via testing).
+This is a Deno bug in their V8 inspector implementation.
+
+**Workaround**:
+1. Use Chrome DevTools UI to manually capture heap snapshots:
+   - Open `chrome://inspect` in Chrome browser
+   - Click "inspect" on your Deno process
+   - Navigate to Memory tab
+   - Click "Take snapshot"
+   - Right-click snapshot and select "Save as..."
+2. Load the exported `.heapsnapshot` file using our `HeapSnapshot` class:
+   ```python
+   from scripts.heap_analyzer import HeapSnapshot
+   snapshot = HeapSnapshot.from_file('exported_snapshot.heapsnapshot')
+   # Now you can analyze it normally
+   ```
+
+**What Still Works**:
+- ✓ CPU profiling (works perfectly)
+- ✓ Breakpoints and stepping
+- ✓ Variable inspection
+- ✓ Expression evaluation
+- ✓ All other CDP features
+- ✓ Heap snapshot ANALYSIS (just can't capture programmatically)
+
+**See**: `docs/DENO_HEAP_SNAPSHOT_BUG.md` for full technical details and test results.
+
 ## Debugging Patterns
 
 ### Memory Leak Investigation

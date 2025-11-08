@@ -46,9 +46,10 @@ class CDPClient:
         self.event_handlers: Dict[str, List[Callable]] = {}
         self.paused = False
         self.call_frames = []
+        self.runtime_info = None  # Will store Deno vs Node detection
 
     async def connect(self):
-        """Establish WebSocket connection to Deno inspector."""
+        """Establish WebSocket connection to Deno/Node inspector."""
         # First, get the WebSocket debugger URL
         import aiohttp
         async with aiohttp.ClientSession() as session:
@@ -57,7 +58,19 @@ class CDPClient:
                 if not targets:
                     raise Exception("No debugger targets found")
 
-                ws_url = targets[0]['webSocketDebuggerUrl']
+                target = targets[0]
+                ws_url = target['webSocketDebuggerUrl']
+
+                # Detect runtime from target info
+                # Deno includes "Deno" in description, Node includes "node"
+                description = target.get('description', '').lower()
+                title = target.get('title', '').lower()
+                self.runtime_info = {
+                    'is_deno': 'deno' in description or 'deno' in title,
+                    'is_node': 'node' in description or 'node' in title,
+                    'description': target.get('description', ''),
+                    'title': target.get('title', '')
+                }
 
         # Connect to WebSocket
         self.ws = await websockets.connect(ws_url)
@@ -362,9 +375,39 @@ class CDPClient:
         """
         Take a heap snapshot.
 
+        ⚠️  KNOWN ISSUE: Deno's V8 inspector does NOT send heap snapshot chunks.
+        This method will return empty string when connected to Deno.
+
+        Workaround: Use Chrome DevTools UI to manually capture heap snapshots
+        and export them as .heapsnapshot files for analysis.
+
+        See docs/DENO_HEAP_SNAPSHOT_BUG.md for details.
+
         Returns:
             Heap snapshot as JSON string (can be large!)
+            Returns empty string if connected to Deno due to known bug.
         """
+        # Warn if connected to Deno
+        if self.runtime_info and self.runtime_info.get('is_deno'):
+            import warnings
+            warnings.warn(
+                "\n"
+                "⚠️  HEAP SNAPSHOT LIMITATION: Deno's V8 inspector does not send heap snapshot chunks.\n"
+                "   This is a known Deno bug. takeHeapSnapshot will return empty data.\n"
+                "\n"
+                "   Workaround: Use Chrome DevTools UI to manually capture heap snapshots:\n"
+                "   1. Open chrome://inspect in Chrome\n"
+                "   2. Click 'inspect' on your Deno process\n"
+                "   3. Go to Memory tab\n"
+                "   4. Click 'Take snapshot'\n"
+                "   5. Right-click snapshot and 'Save as...'\n"
+                "   6. Load the .heapsnapshot file with our HeapSnapshot class\n"
+                "\n"
+                "   See docs/DENO_HEAP_SNAPSHOT_BUG.md for full details.\n",
+                UserWarning,
+                stacklevel=2
+            )
+
         await self.enable_heap_profiler()
 
         chunks = []
