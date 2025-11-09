@@ -5,8 +5,9 @@
 
 import { CDPClient } from "../deno-debugger/scripts/cdp_client.ts";
 import {
-  analyzeProfile,
   analyzeComplexity,
+  analyzeProfile,
+  CPUProfile,
   printComplexityAnalysis,
   saveFlamegraphHTML,
 } from "../deno-debugger/scripts/cpu_profiler.ts";
@@ -58,7 +59,8 @@ async function testCPUProfiling() {
   }
 
   console.log("\nStopping profiler and collecting data...");
-  const profile = await client.stopProfiling();
+  const profileData = await client.stopProfiling();
+  const profile = new CPUProfile(profileData);
   console.log("✓ Profile collected");
 
   // Analyze profile
@@ -88,8 +90,8 @@ async function testCPUProfiling() {
   printComplexityAnalysis(complexityIssues);
 
   // Verify O(n²) detection
-  const criticalIssues = complexityIssues.filter(i => i.severity === "critical");
-  const hasChecksumIssue = criticalIssues.some(i =>
+  const criticalIssues = complexityIssues.filter((i) => i.severity === "critical");
+  const hasChecksumIssue = criticalIssues.some((i) =>
     i.functionName.includes("calculateChecksum") ||
     i.functionName.includes("checksum")
   );
@@ -127,9 +129,15 @@ async function testCPUProfiling() {
   console.log(`Profile duration:        ${analysis.totalDuration.toFixed(0)}ms`);
   console.log(`Hot functions found:     ${analysis.hotFunctions.length}`);
   console.log(`Complexity issues:       ${complexityIssues.length}`);
-  console.log(`  - Critical:            ${complexityIssues.filter(i => i.severity === "critical").length}`);
-  console.log(`  - Warning:             ${complexityIssues.filter(i => i.severity === "warning").length}`);
-  console.log(`  - Info:                ${complexityIssues.filter(i => i.severity === "info").length}`);
+  console.log(
+    `  - Critical:            ${complexityIssues.filter((i) => i.severity === "critical").length}`,
+  );
+  console.log(
+    `  - Warning:             ${complexityIssues.filter((i) => i.severity === "warning").length}`,
+  );
+  console.log(
+    `  - Info:                ${complexityIssues.filter((i) => i.severity === "info").length}`,
+  );
   console.log("");
   console.log("Tools used:");
   console.log("  ✓ CPU profiler with sampling");

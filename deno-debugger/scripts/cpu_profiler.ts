@@ -428,6 +428,51 @@ export function getFunctionTimes(profile: CPUProfile, urlFilter?: string): Funct
   return data.sort((a, b) => b.totalTimePct - a.totalTimePct);
 }
 
+export interface ProfileAnalysis {
+  hotFunctions: Array<{
+    functionName: string;
+    url: string;
+    line: number;
+    selfTime: number;
+    totalTime: number;
+    hitCount: number;
+  }>;
+  totalDuration: number;
+}
+
+/**
+ * Analyze a CPU profile and return hot functions with time-based metrics
+ */
+export function analyzeProfile(profile: CPUProfile): ProfileAnalysis {
+  const timing = profile.getTimingSummary();
+  const totalDurationMs = timing.totalTimeMs;
+  const hot = profile.getHotFunctions();
+
+  // Convert sample-based metrics to time-based metrics
+  const hotFunctions = hot.map((func) => {
+    const selfTime = profile.totalSamples > 0
+      ? (func.selfSamples / profile.totalSamples) * totalDurationMs
+      : 0;
+    const totalTime = profile.totalSamples > 0
+      ? (func.totalSamples / profile.totalSamples) * totalDurationMs
+      : 0;
+
+    return {
+      functionName: func.functionName,
+      url: func.url,
+      line: func.line,
+      selfTime,
+      totalTime,
+      hitCount: func.selfSamples, // Use selfSamples as hitCount
+    };
+  });
+
+  return {
+    hotFunctions,
+    totalDuration: totalDurationMs,
+  };
+}
+
 // ============================================================================
 // Flamegraph Generation
 // ============================================================================
@@ -448,7 +493,7 @@ export function generateFlameGraph(profile: CPUProfile): string {
   // Build call stacks from samples
   for (const sampleId of profile.samples) {
     const stack: string[] = [];
-    let nodeId = sampleId;
+    let nodeId: number | undefined = sampleId;
 
     // Walk up the call tree
     while (nodeId !== undefined) {
@@ -460,8 +505,7 @@ export function generateFlameGraph(profile: CPUProfile): string {
       const line = node.callFrame.lineNumber;
 
       stack.unshift(`${funcName} (${url}:${line})`);
-      const parentId = profile.parentMap.get(nodeId);
-      nodeId = parentId !== undefined ? parentId : undefined;
+      nodeId = profile.parentMap.get(nodeId);
     }
 
     if (stack.length > 0) {
