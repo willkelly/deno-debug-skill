@@ -168,4 +168,24 @@ jobs:
 
         cd ../5_event_loop_timing
         deno check app.ts
+
+        cd ../6_websocket_leak
+        deno check app.ts
+        deno check simulate_connections.ts
+
+        cd ../7_websocket_protocol_mismatch
+        deno check app.ts
+        deno check test_protocol_mismatch.ts
+
+    - name: Check breakfix apps compile
+      run: |
+        # Check all breakfix scenario apps compile
+        cd examples/breakfix/easy
+        deno check app.ts
+
+        cd ../medium
+        deno check app.ts
+
+        cd ../hard
+        deno check app.ts
       timeout-minutes: 2
