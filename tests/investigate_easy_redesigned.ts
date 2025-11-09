@@ -67,20 +67,20 @@ async function investigate() {
 
   console.log("\nTop 10 growing object types:");
   console.table(comparison.slice(0, 10).map(item => ({
-    Type: item.type,
+    Type: item.nodeType,
     "Count Δ": item.countDelta,
     "Size Δ (KB)": (item.sizeDelta / 1024).toFixed(1),
-    "% Growth": item.percentGrowth.toFixed(1) + "%"
+    "% Growth": item.sizeBefore > 0 ? ((item.sizeDelta / item.sizeBefore) * 100).toFixed(1) + "%" : "N/A"
   })));
 
   // Record key finding
   const topGrower = comparison[0];
   bc.addFinding(
-    `Found significant growth in ${topGrower.type} objects`,
+    `Found significant growth in ${topGrower.nodeType} objects`,
     {
       countDelta: topGrower.countDelta,
       sizeDelta: topGrower.sizeDelta,
-      percentGrowth: topGrower.percentGrowth
+      percentGrowth: topGrower.sizeBefore > 0 ? (topGrower.sizeDelta / topGrower.sizeBefore) * 100 : 0
     },
     "critical"
   );
@@ -166,7 +166,7 @@ Growth: ${growthMB.toFixed(2)} MB
 
 Top growing objects:
 ${comparison.slice(0, 5).map(item =>
-  `- ${item.type}: +${item.countDelta} instances (+${(item.sizeDelta / 1024).toFixed(1)} KB)`
+  `- ${item.nodeType}: +${item.countDelta} instances (+${(item.sizeDelta / 1024).toFixed(1)} KB)`
 ).join('\n')}
 `);
 
@@ -215,7 +215,7 @@ Apply this fix to all 5 plugin classes.
   console.log("\n✓ Report saved to investigation_output/easy/REPORT.md");
 
   // Cleanup
-  await client.disconnect();
+  client.close();
   console.log("✓ Investigation complete\n");
 }
 
