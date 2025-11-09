@@ -449,7 +449,7 @@ export function analyzeProfile(profile: CPUProfile): ProfileAnalysis {
   const hot = profile.getHotFunctions();
 
   // Convert sample-based metrics to time-based metrics
-  const hotFunctions = hot.map(func => {
+  const hotFunctions = hot.map((func) => {
     const selfTime = profile.totalSamples > 0
       ? (func.selfSamples / profile.totalSamples) * totalDurationMs
       : 0;
@@ -493,7 +493,7 @@ export function generateFlameGraph(profile: CPUProfile): string {
   // Build call stacks from samples
   for (const sampleId of profile.samples) {
     const stack: string[] = [];
-    let nodeId = sampleId;
+    let nodeId: number | undefined = sampleId;
 
     // Walk up the call tree
     while (nodeId !== undefined) {
@@ -505,8 +505,7 @@ export function generateFlameGraph(profile: CPUProfile): string {
       const line = node.callFrame.lineNumber;
 
       stack.unshift(`${funcName} (${url}:${line})`);
-      const parentId = profile.parentMap.get(nodeId);
-      nodeId = parentId !== undefined ? parentId : undefined;
+      nodeId = profile.parentMap.get(nodeId);
     }
 
     if (stack.length > 0) {
