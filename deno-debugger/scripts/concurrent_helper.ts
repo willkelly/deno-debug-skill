@@ -130,7 +130,7 @@ export async function generateConcurrentRequests(
   await Promise.all(requests);
 
   console.log(`✓ All ${count} requests completed`);
-  return results.filter(r => r !== undefined);
+  return results.filter((r): r is RequestResult => r !== undefined);
 }
 
 /**

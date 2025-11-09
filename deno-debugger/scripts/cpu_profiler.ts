@@ -460,7 +460,8 @@ export function generateFlameGraph(profile: CPUProfile): string {
       const line = node.callFrame.lineNumber;
 
       stack.unshift(`${funcName} (${url}:${line})`);
-      nodeId = profile.parentMap.get(nodeId)!;
+      const parentId = profile.parentMap.get(nodeId);
+      nodeId = parentId !== undefined ? parentId : undefined;
     }
 
     if (stack.length > 0) {
