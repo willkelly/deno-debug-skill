@@ -3,13 +3,13 @@
  * Demonstrates flamegraph generation and O(n²) complexity detection
  */
 
-import { CDPClient } from "./deno-debugger/scripts/cdp_client.ts";
+import { CDPClient } from "../deno-debugger/scripts/cdp_client.ts";
 import {
   analyzeProfile,
   analyzeComplexity,
   printComplexityAnalysis,
   saveFlamegraphHTML,
-} from "./deno-debugger/scripts/cpu_profiler.ts";
+} from "../deno-debugger/scripts/cpu_profiler.ts";
 
 async function testCPUProfiling() {
   console.log("=== CPU Profiling Analysis Test ===");

@@ -3,12 +3,12 @@
  * Demonstrates conditional breakpoints and concurrent request analysis
  */
 
-import { CDPClient } from "./deno-debugger/scripts/cdp_client.ts";
+import { CDPClient } from "../deno-debugger/scripts/cdp_client.ts";
 import {
   generateConcurrentRequests,
   analyzeForRace,
   printRaceAnalysis,
-} from "./deno-debugger/scripts/concurrent_helper.ts";
+} from "../deno-debugger/scripts/concurrent_helper.ts";
 
 async function testRaceDebugging() {
   console.log("=== Race Condition Debugging Test ===");

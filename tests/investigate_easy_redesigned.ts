@@ -3,10 +3,10 @@
  * Memory leak investigation using heap snapshot comparison
  */
 
-import { CDPClient } from "./deno-debugger/scripts/cdp_client.ts";
-import { captureSnapshot, compareSnapshots } from "./deno-debugger/scripts/heap_analyzer.ts";
-import { Breadcrumbs } from "./deno-debugger/scripts/breadcrumbs.ts";
-import { MarkdownReport } from "./deno-debugger/scripts/report_gen.ts";
+import { CDPClient } from "../deno-debugger/scripts/cdp_client.ts";
+import { captureSnapshot, compareSnapshots } from "../deno-debugger/scripts/heap_analyzer.ts";
+import { Breadcrumbs } from "../deno-debugger/scripts/breadcrumbs.ts";
+import { MarkdownReport } from "../deno-debugger/scripts/report_gen.ts";
 
 async function investigate() {
   // Initialize investigation tracking
