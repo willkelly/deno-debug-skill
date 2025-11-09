@@ -54,7 +54,10 @@ typecheck:
 validate:
 	@echo "Validating example scenarios..."
 	@cd examples/scenarios/1_memory_leak && deno check app.ts
-	@cd examples/scenarios/2_performance && deno check app.ts
+	@cd examples/scenarios/2_performance_bottleneck && deno check app.ts
+	@cd examples/scenarios/3_race_condition && deno check app.ts
+	@cd examples/scenarios/4_state_corruption && deno check app.ts
+	@cd examples/scenarios/5_event_loop_timing && deno check app.ts
 	@echo "✓ All examples are valid!"
 
 # Code formatting
@@ -74,11 +77,8 @@ lint:
 # Clean up
 clean:
 	@echo "Cleaning generated files..."
-	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
-	find . -type f -name "*.pyc" -delete
-	rm -rf .pytest_cache htmlcov .coverage
-	rm -rf investigation_output/
-	rm -f *.heapsnapshot *.cpuprofile
+	rm -rf investigation_output/ data/ output/
+	rm -f *.heapsnapshot *.cpuprofile *.json
 	@echo "✓ Cleaned!"
 
 # Package the skill for distribution
