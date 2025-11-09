@@ -250,35 +250,115 @@ const sourceCode = await Deno.readTextFile("path/to/slow_file.ts");
 // [Your code inspection here]
 ```
 
-#### Pattern C: Race Condition
+#### Pattern C: Race Condition / Concurrency Bug
+
+**Key Challenge:** Race conditions are timing-dependent and hard to reproduce consistently.
+
+**Strategy:** Use conditional breakpoints to catch the race only when it occurs.
 
 ```typescript
-// 1. Set breakpoints at async boundaries
-await client.setBreakpointByUrl("file:///app.ts", 42);
-console.log("Breakpoint set at line 42");
+// 1. Set CONDITIONAL breakpoints to catch specific states
+// Break only when lock is already claimed (race condition!)
+await client.setBreakpointByUrl(
+  "file:///app.ts",
+  130,  // Line where we check lock state
+  0,
+  "lock.state !== 'available'"  // ← CONDITION: Only break if lock not available
+);
 
-// 2. Set pause on exceptions
+// Break when version increments unexpectedly (indicates concurrent modification)
+await client.setBreakpointByUrl(
+  "file:///app.ts",
+  167,
+  0,
+  "lock.version > expectedVersion"  // ← CONDITION: Version jumped
+);
+
+console.log("✓ Conditional breakpoints set for race detection");
+
+// 2. Set pause on exceptions (catches errors from race)
 await client.setPauseOnExceptions("all");
 
-// 3. Trigger the race
-console.log("Trigger the problematic async code now...");
-// ... trigger problematic async code ...
+// 3. Generate concurrent requests to trigger the race
+// Need many concurrent attempts to hit the timing window
+console.log("Generating 100 concurrent requests to trigger race...");
 
-// 4. When paused, inspect state
+const requests = [];
+for (let i = 0; i < 100; i++) {
+  requests.push(
+    fetch("http://localhost:8081/acquire", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        lockId: "test-lock",
+        clientId: `client-${i}`,
+      }),
+    })
+  );
+}
+
+// Fire all requests concurrently
+const responses = await Promise.all(requests);
+
+// 4. If race occurs, breakpoint will trigger
+// When paused, inspect the state
 const frames = client.getCallFrames();
 if (frames.length > 0) {
   const variables = await client.getScopeVariables(frames[0].callFrameId);
-  console.log(`Paused at: ${frames[0].functionName} line ${frames[0].location.lineNumber}`);
-  console.log("Variables:", variables);
+  console.log(`🔴 Breakpoint hit!`);
+  console.log(`Location: ${frames[0].functionName} line ${frames[0].location.lineNumber}`);
+  console.log(`Variables:`, variables);
+
+  // Evaluate lock state
+  const lockState = await client.evaluate("lock.state");
+  const lockOwner = await client.evaluate("lock.owner");
+  const lockVersion = await client.evaluate("lock.version");
+
+  console.log(`Lock state: ${lockState}`);
+  console.log(`Lock owner: ${lockOwner}`);
+  console.log(`Lock version: ${lockVersion}`);
 }
 
-// 5. Evaluate expressions to check state
-const result = await client.evaluate("myVariable.status");
-console.log("Variable state:", result);
+// 5. Check results for race condition evidence
+const successes = responses.filter(r => r.ok);
+const results = await Promise.all(successes.map(r => r.json()));
+const acquiredCount = results.filter(r => r.success).length;
 
-// 6. Examine code to find missing awaits or improper synchronization
+console.log(`\n📊 Results:`);
+console.log(`  Total requests: ${responses.length}`);
+console.log(`  Successful acquires: ${acquiredCount}`);
+console.log(`  Expected: 1`);
+console.log(`  Race detected: ${acquiredCount > 1 ? '❌ YES' : '✅ NO'}`);
+
+// 6. Examine code to understand the race window
 const sourceCode = await Deno.readTextFile("path/to/async_file.ts");
-// [Your code inspection here]
+// Look for:
+// - Check-then-act patterns (TOCTOU)
+// - Async gaps between read and write
+// - Missing atomic operations
+```
+
+**Race Condition Debugging Tips:**
+
+1. **Conditional breakpoints are essential** - Don't waste time on non-race executions
+2. **Run many concurrent requests** - Races have low probability (1-5%)
+3. **Watch for version/state changes** - Indicates concurrent modification
+4. **Look for async gaps** - Time between check and update is the race window
+5. **Check timing** - Use `Date.now()` to measure gaps between operations
+
+**Common Race Patterns:**
+
+```typescript
+// BAD: Check-then-act with async gap
+if (lock.state === "available") {  // ← Check
+  await someAsyncOperation();      // ← GAP (race window!)
+  lock.state = "acquired";         // ← Act
+}
+
+// GOOD: Atomic check-and-act
+const wasAvailable = lock.state === "available";
+lock.state = wasAvailable ? "acquired" : lock.state;
+if (!wasAvailable) throw new Error("Lock unavailable");
 ```
 
 ### 4. Examine Code
