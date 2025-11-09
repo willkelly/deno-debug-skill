@@ -19,15 +19,23 @@ jobs:
       with:
         deno-version: v2.x
 
-    - name: Check formatting
+    - name: Check formatting (skill)
       run: |
         cd deno-debugger
         deno fmt --check
 
-    - name: Lint code
+    - name: Check formatting (tests)
+      run: |
+        deno fmt --check tests/
+
+    - name: Lint code (skill)
       run: |
         cd deno-debugger
         deno lint
+
+    - name: Lint code (tests)
+      run: |
+        deno lint tests/
 
   type-check:
     name: Type Check
@@ -41,9 +49,14 @@ jobs:
       with:
         deno-version: v2.x
 
-    - name: Type check all scripts
+    - name: Type check skill scripts
       run: |
         cd deno-debugger/scripts
+        deno check *.ts
+
+    - name: Type check test scripts
+      run: |
+        cd tests
         deno check *.ts
 
   unit-tests:
