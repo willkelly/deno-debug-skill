@@ -9,12 +9,7 @@
  * - Analyze heap usage
  */
 
-import type {
-  HeapEdge,
-  HeapNode,
-  HeapSnapshotData,
-  RetainingPath,
-} from "./types.ts";
+import type { HeapEdge, HeapNode, HeapSnapshotData, RetainingPath } from "./types.ts";
 import type { CDPClient } from "./cdp_client.ts";
 
 export interface NodeSizeSummary {
@@ -249,7 +244,7 @@ export class HeapSnapshot {
     if (this.options.skipRetention) {
       throw new Error(
         "Cannot find retaining paths: snapshot was created with skipRetention=true. " +
-        "Create snapshot with { skipRetention: false } to enable this feature."
+          "Create snapshot with { skipRetention: false } to enable this feature.",
       );
     }
 
@@ -475,7 +470,9 @@ async function buildSummaryFromFile(
     processed++;
     if (processed % batchSize === 0) {
       const pct = ((processed / nodeCount) * 100).toFixed(0);
-      console.log(`    ${pct}% (${(processed / 1000).toFixed(0)}k / ${(nodeCount / 1000).toFixed(0)}k nodes)`);
+      console.log(
+        `    ${pct}% (${(processed / 1000).toFixed(0)}k / ${(nodeCount / 1000).toFixed(0)}k nodes)`,
+      );
     }
   }
 

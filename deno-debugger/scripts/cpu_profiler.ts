@@ -526,7 +526,7 @@ export async function saveFlamegraphHTML(profile: CPUProfile, outputPath: string
   console.log(`Flamegraph data saved to ${outputPath}`);
   console.log(`\nFor interactive visualization:`);
   console.log(`  1. Upload .cpuprofile to https://www.speedscope.app`);
-  console.log(`  2. Or use: flamegraph.pl ${outputPath.replace('.html', '.txt')}`);
+  console.log(`  2. Or use: flamegraph.pl ${outputPath.replace(".html", ".txt")}`);
 }
 
 // ============================================================================
@@ -572,8 +572,17 @@ export function analyzeComplexity(profile: CPUProfile): ComplexityIssue[] {
 
     // Heuristic 2: Function name suggests iteration
     const funcName = func.functionName.toLowerCase();
-    const iterationKeywords = ["loop", "iterate", "each", "map", "filter", "reduce", "compare", "check"];
-    const matchedKeywords = iterationKeywords.filter(kw => funcName.includes(kw));
+    const iterationKeywords = [
+      "loop",
+      "iterate",
+      "each",
+      "map",
+      "filter",
+      "reduce",
+      "compare",
+      "check",
+    ];
+    const matchedKeywords = iterationKeywords.filter((kw) => funcName.includes(kw));
 
     if (matchedKeywords.length > 0) {
       evidence.push(`Function name suggests iteration: "${func.functionName}"`);
@@ -587,13 +596,23 @@ export function analyzeComplexity(profile: CPUProfile): ComplexityIssue[] {
 
     // Heuristic 4: Common O(n²) function names
     const quadraticPatterns = [
-      "compare", "checksum", "validate", "match", "find",
-      "contains", "indexof", "search", "sort", "calc"
+      "compare",
+      "checksum",
+      "validate",
+      "match",
+      "find",
+      "contains",
+      "indexof",
+      "search",
+      "sort",
+      "calc",
     ];
 
     for (const pattern of quadraticPatterns) {
       if (funcName.includes(pattern) && func.selfPct > 20) {
-        evidence.push(`Function name "${func.functionName}" with high CPU suggests nested iteration`);
+        evidence.push(
+          `Function name "${func.functionName}" with high CPU suggests nested iteration`,
+        );
         suspectedComplexity = "Likely O(n²)";
         severity = "critical";
         break;
@@ -630,8 +649,7 @@ export function printComplexityAnalysis(issues: ComplexityIssue[]): void {
   console.log("=".repeat(70));
 
   for (const issue of issues) {
-    const icon = issue.severity === "critical" ? "🔴" :
-                 issue.severity === "warning" ? "⚠️" : "ℹ️";
+    const icon = issue.severity === "critical" ? "🔴" : issue.severity === "warning" ? "⚠️" : "ℹ️";
 
     console.log(`\n${icon} ${issue.functionName}`);
     console.log(`   Location: ${issue.url}:${issue.line}`);
@@ -648,7 +666,7 @@ export function printComplexityAnalysis(issues: ComplexityIssue[]): void {
   console.log("RECOMMENDATIONS");
   console.log("=".repeat(70));
 
-  const critical = issues.filter(i => i.severity === "critical");
+  const critical = issues.filter((i) => i.severity === "critical");
   if (critical.length > 0) {
     console.log("\n🔴 Critical (investigate immediately):");
     for (const issue of critical) {
@@ -657,7 +675,7 @@ export function printComplexityAnalysis(issues: ComplexityIssue[]): void {
     }
   }
 
-  const warnings = issues.filter(i => i.severity === "warning");
+  const warnings = issues.filter((i) => i.severity === "warning");
   if (warnings.length > 0) {
     console.log("\n⚠️  Warnings (review for optimization):");
     for (const issue of warnings) {

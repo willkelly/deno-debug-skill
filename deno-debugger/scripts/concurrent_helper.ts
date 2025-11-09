@@ -53,7 +53,7 @@ export interface RaceAnalysis {
  * ```
  */
 export async function generateConcurrentRequests(
-  options: ConcurrentRequestOptions
+  options: ConcurrentRequestOptions,
 ): Promise<RequestResult[]> {
   const {
     url,
@@ -72,7 +72,7 @@ export async function generateConcurrentRequests(
   for (let i = 0; i < count; i++) {
     // Small stagger to increase race probability
     if (delayBetweenMs > 0) {
-      await new Promise(resolve => setTimeout(resolve, delayBetweenMs));
+      await new Promise((resolve) => setTimeout(resolve, delayBetweenMs));
     }
 
     const request = (async (index: number) => {
@@ -144,13 +144,13 @@ export async function generateConcurrentRequests(
 export function analyzeForRace(
   results: RequestResult[],
   successPredicate: (result: RequestResult) => boolean,
-  expectedWinners = 1
+  expectedWinners = 1,
 ): RaceAnalysis {
-  const successful = results.filter(r => r.ok);
-  const failed = results.filter(r => !r.ok);
+  const successful = results.filter((r) => r.ok);
+  const failed = results.filter((r) => !r.ok);
   const winners = results.filter(successPredicate);
 
-  const durations = results.map(r => r.duration);
+  const durations = results.map((r) => r.duration);
   const avgDuration = durations.reduce((sum, d) => sum + d, 0) / durations.length;
   const minDuration = Math.min(...durations);
   const maxDuration = Math.max(...durations);
@@ -160,30 +160,30 @@ export function analyzeForRace(
 
   if (raceDetected) {
     raceEvidence.push(
-      `Expected ${expectedWinners} winner(s), but ${winners.length} succeeded`
+      `Expected ${expectedWinners} winner(s), but ${winners.length} succeeded`,
     );
 
     // Check timing overlap (winners with overlapping execution)
-    const winnerTimes = winners.map(w => ({ start: w.startTime, end: w.endTime }));
+    const winnerTimes = winners.map((w) => ({ start: w.startTime, end: w.endTime }));
     for (let i = 0; i < winnerTimes.length; i++) {
       for (let j = i + 1; j < winnerTimes.length; j++) {
         const overlap = Math.min(winnerTimes[i].end, winnerTimes[j].end) -
-                       Math.max(winnerTimes[i].start, winnerTimes[j].start);
+          Math.max(winnerTimes[i].start, winnerTimes[j].start);
         if (overlap > 0) {
           raceEvidence.push(
-            `Winners ${i} and ${j} had ${overlap}ms of overlapping execution`
+            `Winners ${i} and ${j} had ${overlap}ms of overlapping execution`,
           );
         }
       }
     }
 
     // Check for close timing
-    const winnerStartTimes = winners.map(w => w.startTime).sort((a, b) => a - b);
+    const winnerStartTimes = winners.map((w) => w.startTime).sort((a, b) => a - b);
     for (let i = 1; i < winnerStartTimes.length; i++) {
       const gap = winnerStartTimes[i] - winnerStartTimes[i - 1];
       if (gap < 10) {
         raceEvidence.push(
-          `Winners started within ${gap}ms of each other`
+          `Winners started within ${gap}ms of each other`,
         );
       }
     }
