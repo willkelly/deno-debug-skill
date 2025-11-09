@@ -5,8 +5,8 @@
 
 import { CDPClient } from "../deno-debugger/scripts/cdp_client.ts";
 import {
-  generateConcurrentRequests,
   analyzeForRace,
+  generateConcurrentRequests,
   printRaceAnalysis,
 } from "../deno-debugger/scripts/concurrent_helper.ts";
 
@@ -39,7 +39,7 @@ async function testRaceDebugging() {
   const analysis = analyzeForRace(
     results,
     (r) => r.body?.success === true,
-    1  // Only 1 should succeed for a lock
+    1, // Only 1 should succeed for a lock
   );
 
   printRaceAnalysis(analysis);
@@ -61,9 +61,9 @@ async function testRaceDebugging() {
     // (This indicates a race - someone else already claimed it)
     const bp1 = await client.setBreakpointByUrl(
       "file:///.*medium/app.ts",
-      130,  // Line: if (lock.state !== "available")
+      130, // Line: if (lock.state !== "available")
       0,
-      'lock.state !== "available" && lock.owner !== clientId'
+      'lock.state !== "available" && lock.owner !== clientId',
     );
     console.log(`✓ Conditional breakpoint #1: Break when lock already claimed`);
     console.log(`  Breakpoint ID: ${bp1}`);
@@ -71,16 +71,15 @@ async function testRaceDebugging() {
     // Conditional breakpoint: Break on version jump (concurrent modification)
     const bp2 = await client.setBreakpointByUrl(
       "file:///.*medium/app.ts",
-      167,  // Line: lock.version++
+      167, // Line: lock.version++
       0,
-      "lock.version > 2"  // Suspicious if version jumps quickly
+      "lock.version > 2", // Suspicious if version jumps quickly
     );
     console.log(`✓ Conditional breakpoint #2: Break on version jump`);
     console.log(`  Breakpoint ID: ${bp2}`);
 
     console.log("\nConditional breakpoints are now active.");
     console.log("They will ONLY trigger when the race condition occurs.");
-
   } catch (error) {
     console.log(`Note: Breakpoints may not resolve (app not running or different path)`);
     console.log(`Error: ${error}`);
@@ -90,7 +89,7 @@ async function testRaceDebugging() {
   console.log("\n\nTest 3: Analyzing race pattern from results");
   console.log("─".repeat(60));
 
-  const winners = results.filter(r => r.body?.success === true);
+  const winners = results.filter((r) => r.body?.success === true);
 
   if (winners.length > 1) {
     console.log("\n🔍 Race Condition Confirmed!\n");
@@ -112,10 +111,10 @@ async function testRaceDebugging() {
       const gap = w2.startTime - w1.startTime;
       const overlap = Math.min(w1.endTime, w2.endTime) - Math.max(w1.startTime, w2.startTime);
 
-      console.log(`  Winners ${i} and ${i+1}:`);
+      console.log(`  Winners ${i} and ${i + 1}:`);
       console.log(`    Start gap:      ${gap}ms`);
-      console.log(`    Execution overlap: ${overlap > 0 ? overlap + 'ms' : 'none'}`);
-      console.log(`    ⚠️  ${overlap > 0 ? 'CONCURRENT EXECUTION DETECTED' : 'Sequential'}`);
+      console.log(`    Execution overlap: ${overlap > 0 ? overlap + "ms" : "none"}`);
+      console.log(`    ⚠️  ${overlap > 0 ? "CONCURRENT EXECUTION DETECTED" : "Sequential"}`);
     }
   } else {
     console.log("\nNo race detected in this run.");

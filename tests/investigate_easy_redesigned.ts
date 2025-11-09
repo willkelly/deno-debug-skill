@@ -15,7 +15,7 @@ async function investigate() {
   // Record initial hypothesis
   bc.addHypothesis(
     "Memory leak from plugin reloads",
-    "Symptoms: ~2MB growth per 1000 reloads, steady memory increase over time"
+    "Symptoms: ~2MB growth per 1000 reloads, steady memory increase over time",
   );
 
   console.log("=== Plugin Analytics Service - Memory Leak Investigation ===\n");
@@ -33,8 +33,12 @@ async function investigate() {
 
   // Capture baseline heap snapshot
   console.log("Step 1: Capturing baseline heap snapshot...");
-  const snapshot1 = await captureSnapshot(client, "investigation_output/easy/baseline.heapsnapshot");
-  const baselineSize = (await Deno.stat("investigation_output/easy/baseline.heapsnapshot")).size / (1024 * 1024);
+  const snapshot1 = await captureSnapshot(
+    client,
+    "investigation_output/easy/baseline.heapsnapshot",
+  );
+  const baselineSize = (await Deno.stat("investigation_output/easy/baseline.heapsnapshot")).size /
+    (1024 * 1024);
   console.log(`✓ Baseline: ${baselineSize.toFixed(2)} MB\n`);
 
   // Trigger plugin reloads (simulate the leak)
@@ -50,14 +54,18 @@ async function investigate() {
     }
 
     // Small delay between reloads
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
   }
   console.log("✓ Reloads complete\n");
 
   // Capture comparison heap snapshot
   console.log("Step 3: Capturing comparison heap snapshot...");
-  const snapshot2 = await captureSnapshot(client, "investigation_output/easy/after_reloads.heapsnapshot");
-  const afterSize = (await Deno.stat("investigation_output/easy/after_reloads.heapsnapshot")).size / (1024 * 1024);
+  const snapshot2 = await captureSnapshot(
+    client,
+    "investigation_output/easy/after_reloads.heapsnapshot",
+  );
+  const afterSize = (await Deno.stat("investigation_output/easy/after_reloads.heapsnapshot")).size /
+    (1024 * 1024);
   const growthMB = afterSize - baselineSize;
   console.log(`✓ After: ${afterSize.toFixed(2)} MB (grew ${growthMB.toFixed(2)} MB)\n`);
 
@@ -66,12 +74,16 @@ async function investigate() {
   const comparison = compareSnapshots(snapshot1, snapshot2);
 
   console.log("\nTop 10 growing object types:");
-  console.table(comparison.slice(0, 10).map(item => ({
-    Type: item.nodeType,
-    "Count Δ": item.countDelta,
-    "Size Δ (KB)": (item.sizeDelta / 1024).toFixed(1),
-    "% Growth": item.sizeBefore > 0 ? ((item.sizeDelta / item.sizeBefore) * 100).toFixed(1) + "%" : "N/A"
-  })));
+  console.table(
+    comparison.slice(0, 10).map((item) => ({
+      Type: item.nodeType,
+      "Count Δ": item.countDelta,
+      "Size Δ (KB)": (item.sizeDelta / 1024).toFixed(1),
+      "% Growth": item.sizeBefore > 0
+        ? ((item.sizeDelta / item.sizeBefore) * 100).toFixed(1) + "%"
+        : "N/A",
+    })),
+  );
 
   // Record key finding
   const topGrower = comparison[0];
@@ -80,9 +92,11 @@ async function investigate() {
     {
       countDelta: topGrower.countDelta,
       sizeDelta: topGrower.sizeDelta,
-      percentGrowth: topGrower.sizeBefore > 0 ? (topGrower.sizeDelta / topGrower.sizeBefore) * 100 : 0
+      percentGrowth: topGrower.sizeBefore > 0
+        ? (topGrower.sizeDelta / topGrower.sizeBefore) * 100
+        : 0,
     },
-    "critical"
+    "critical",
   );
 
   // Examine the code
@@ -127,13 +141,13 @@ async function investigate() {
   bc.addFinding(
     `${missingCleanupCount} plugin shutdown methods missing unsubscribe`,
     { total: shutdowns.length, missing: missingCleanupCount },
-    "critical"
+    "critical",
   );
 
   // Root cause determination
   bc.addDecision(
     "Root cause: Event handlers accumulate in EventBus",
-    "Plugins subscribe in initialize() but never unsubscribe in shutdown(), causing handler arrays to grow with each reload"
+    "Plugins subscribe in initialize() but never unsubscribe in shutdown(), causing handler arrays to grow with each reload",
   );
 
   console.log("\n=== ROOT CAUSE IDENTIFIED ===");
@@ -151,30 +165,40 @@ async function investigate() {
 
   report.addSummary(
     `Memory leak caused by missing event handler cleanup in plugin shutdown methods. ` +
-    `Each plugin reload adds new handlers but never removes old ones, causing linear memory growth.`
+      `Each plugin reload adds new handlers but never removes old ones, causing linear memory growth.`,
   );
 
   report.addProblem(
     "Memory grows by ~2MB per 1000 plugin reloads. After 6 hours of operation, " +
-    "service consumes 800MB (started at 80MB)."
+      "service consumes 800MB (started at 80MB).",
   );
 
-  report.addEvidence("Heap Snapshots", `
+  report.addEvidence(
+    "Heap Snapshots",
+    `
 Baseline: ${baselineSize.toFixed(2)} MB
 After 25 reloads: ${afterSize.toFixed(2)} MB
 Growth: ${growthMB.toFixed(2)} MB
 
 Top growing objects:
-${comparison.slice(0, 5).map(item =>
-  `- ${item.nodeType}: +${item.countDelta} instances (+${(item.sizeDelta / 1024).toFixed(1)} KB)`
-).join('\n')}
-`);
+${
+      comparison.slice(0, 5).map((item) =>
+        `- ${item.nodeType}: +${item.countDelta} instances (+${
+          (item.sizeDelta / 1024).toFixed(1)
+        } KB)`
+      ).join("\n")
+    }
+`,
+  );
 
-  report.addEvidence("Code Analysis", `
+  report.addEvidence(
+    "Code Analysis",
+    `
 Subscribe calls: ${subscribeLines.length}
 Unsubscribe calls: ${unsubscribeLines.length}
 Shutdown methods missing cleanup: ${missingCleanupCount}/${shutdowns.length}
-`);
+`,
+  );
 
   report.addRootCause(`
 **Event Handler Leak in Plugin Lifecycle**
@@ -194,7 +218,9 @@ When plugins are reloaded:
 The handlers array grows indefinitely, causing memory leak.
 `);
 
-  report.addRecommendation("Fix Plugin Shutdown Methods", `
+  report.addRecommendation(
+    "Fix Plugin Shutdown Methods",
+    `
 Add \`unsubscribe()\` calls to each plugin's \`shutdown()\` method:
 
 \`\`\`typescript
@@ -209,7 +235,8 @@ shutdown(): void {
 \`\`\`
 
 Apply this fix to all 5 plugin classes.
-`);
+`,
+  );
 
   await report.save("investigation_output/easy/REPORT.md");
   console.log("\n✓ Report saved to investigation_output/easy/REPORT.md");
