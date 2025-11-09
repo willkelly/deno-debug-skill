@@ -145,12 +145,15 @@ Based on the problem type, follow one of these patterns:
 
 #### Pattern A: Memory Leak
 
+**IMPORTANT: For large heaps (>100MB), use the FAST comparison mode to avoid 3+ hour waits!**
+
 ```typescript
-import { captureSnapshot, compareSnapshots } from "./scripts/heap_analyzer.ts";
+import { compareSnapshotsFast } from "./scripts/heap_analyzer.ts";
+import type { CDPClient } from "./scripts/cdp_client.ts";
 
 // 1. Capture baseline
 console.log("Capturing baseline snapshot...");
-const snapshot1 = await captureSnapshot(client, "investigation_output/baseline.heapsnapshot");
+await client.takeHeapSnapshot("investigation_output/baseline.heapsnapshot");
 const baseline_size = (await Deno.stat("investigation_output/baseline.heapsnapshot")).size / (1024 * 1024);
 console.log(`Baseline: ${baseline_size.toFixed(2)} MB`);
 
@@ -161,22 +164,58 @@ await new Promise(resolve => setTimeout(resolve, 5000)); // Wait
 
 // 3. Capture comparison
 console.log("Capturing comparison snapshot...");
-const snapshot2 = await captureSnapshot(client, "investigation_output/after.heapsnapshot");
+await client.takeHeapSnapshot("investigation_output/after.heapsnapshot");
 const after_size = (await Deno.stat("investigation_output/after.heapsnapshot")).size / (1024 * 1024);
 
 // 4. Analyze growth
 const growth_mb = after_size - baseline_size;
 console.log(`After: ${after_size.toFixed(2)} MB (grew ${growth_mb.toFixed(2)} MB)`);
 
-// 5. Compare snapshots to see what grew
-const comparison = compareSnapshots(snapshot1, snapshot2);
-console.log("\nTop growing objects:");
-console.table(comparison.slice(0, 10));
+// 5. FAST: Compare snapshots using summary-only mode
+// This skips edges and retention paths (10-50x faster for large heaps)
+const comparison = await compareSnapshotsFast(
+  "investigation_output/baseline.heapsnapshot",
+  "investigation_output/after.heapsnapshot"
+);
 
-// 6. Examine code to find the cause
+console.log("\nTop 10 growing objects:");
+console.table(comparison.slice(0, 10).map(row => ({
+  Type: row.nodeType,
+  Name: row.name.substring(0, 40),
+  "Count Δ": row.countDelta,
+  "Size Δ (MB)": (row.sizeDelta / (1024 * 1024)).toFixed(2),
+})));
+
+// 6. If you need retaining paths for specific objects, load with full mode:
+// (Only do this if compareSnapshotsFast wasn't enough)
+/*
+import { loadSnapshot } from "./scripts/heap_analyzer.ts";
+
+const afterSnapshot = await loadSnapshot("investigation_output/after.heapsnapshot");
+const suspiciousNode = afterSnapshot.nodes.find(n => n.name === "LeakyObject");
+if (suspiciousNode) {
+  const path = afterSnapshot.findRetainingPath(suspiciousNode.id);
+  console.log("Why is this object retained?", path);
+}
+*/
+
+// 7. Examine code to find the cause
 const sourceCode = await Deno.readTextFile("path/to/app.ts");
 // [Your code inspection here]
 ```
+
+**Performance Guide:**
+
+| Heap Size | compareSnapshotsFast() | loadSnapshot() + compareSnapshots() |
+|-----------|------------------------|-------------------------------------|
+| <10 MB | ~2 seconds | ~5 seconds |
+| 100 MB | ~8 seconds | ~2 minutes |
+| 900 MB | ~20 seconds | ~3 hours ❌ |
+
+**When to use full mode:**
+- ✅ Use `compareSnapshotsFast()` FIRST (always!)
+- ✅ Only load full snapshots if you need retaining paths
+- ✅ Narrow down to specific objects before loading full snapshots
 
 #### Pattern B: Performance Bottleneck
 
