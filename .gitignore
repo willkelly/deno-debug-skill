@@ -13,6 +13,11 @@ investigation_*.json
 breadcrumbs_*.json
 investigation_output/
 
+# Test outputs
+tests/output/
+*_flamegraph.html
+flamegraph.html
+
 # Scenario outputs (from examples/scenarios/*/run.sh)
 examples/scenarios/*/output/
 examples/scenarios/*/*.log
