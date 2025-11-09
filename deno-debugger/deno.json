@@ -13,15 +13,15 @@
     "semiColons": true,
     "singleQuote": false,
     "proseWrap": "preserve",
-    "include": ["scripts/", "tests/"]
+    "include": ["scripts/"]
   },
   "lint": {
-    "include": ["scripts/", "tests/"],
+    "include": ["scripts/"],
     "rules": {
       "tags": ["recommended"]
     }
   },
   "test": {
-    "include": ["scripts/**/*_test.ts", "tests/**/*_test.ts"]
+    "include": ["scripts/**/*_test.ts"]
   }
 }

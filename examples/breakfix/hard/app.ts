@@ -1,371 +1,494 @@
 /**
- * Background Task Queue Processor
+ * Media Processing Service
  *
- * A production-grade task queue with multiple workers, priority queues,
- * and retry logic. Processes various background jobs like image processing,
- * email sending, and data exports.
+ * A high-performance service for processing video thumbnails, applying filters,
+ * and extracting metadata. Supports batch processing with multiple pipeline stages.
  *
  * PROBLEM REPORT:
- * Production incidents over the past week:
- * 1. Task failures increase over time - first hour: 0%, after 6 hours: 15%
- * 2. Memory usage grows from 50MB to 500MB+ over 24 hours
- * 3. Intermittent "Task already claimed" errors despite proper locking
- * 4. Event loop lag spikes to 2-3 seconds during export tasks
- * 5. Some export files are corrupted or incomplete
+ * Production performance has degraded significantly:
+ * - Processing 100 images used to take 2 seconds, now takes 45+ seconds
+ * - CPU usage spikes to 100% during batch jobs
+ * - No recent code changes to core processing logic
+ * - Issue appeared after adding "metadata enrichment" feature
+ * - Performance degrades exponentially with batch size
  *
- * The bugs are subtle and interact with each other, making root cause analysis
- * difficult. Production metrics show degradation correlates with:
- * - Number of export tasks processed
- * - Time since last restart
- * - Number of task retries
+ * Symptoms:
+ * - Small batches (10 images): ~500ms (acceptable)
+ * - Medium batches (50 images): ~12 seconds (slow)
+ * - Large batches (100 images): ~45 seconds (unacceptable)
+ * - Memory usage is normal, CPU is the bottleneck
  *
- * TO DEBUG:
- * 1. Start: deno run --inspect --allow-net --allow-read --allow-write hard/app.ts
- * 2. Trigger tasks: curl -X POST http://localhost:8082/tasks -d '{"type":"export","count":100}'
- * 3. Monitor: curl http://localhost:8082/metrics
- * 4. Watch for degradation over time
+ * TO TEST:
+ * 1. Start: deno run --inspect --allow-net hard/app.ts
+ * 2. Process small batch: curl -X POST http://localhost:8082/process -d '{"count":10}'
+ * 3. Process large batch: curl -X POST http://localhost:8082/process -d '{"count":100}'
+ * 4. Notice the exponential slowdown
+ *
+ * DEBUGGING HINT:
+ * Take a CPU profile during a large batch (100+ images):
+ * 1. Start profiling before the request
+ * 2. POST /process with count=100
+ * 3. Stop profiling when request completes
+ * 4. Analyze profile - look for the hottest function
+ * 5. One function will consume 90%+ of CPU time
+ *
+ * Code reading won't easily reveal this! The bottleneck is hidden
+ * in an innocent-looking helper function called through multiple layers.
  */
 
-interface Task {
+// Simulated image data
+interface ImageData {
   id: string;
-  type: "image" | "email" | "export";
-  priority: number;
-  data: Record<string, unknown>;
-  attempts: number;
-  maxAttempts: number;
-  createdAt: number;
-  claimedBy?: string;
-  claimedAt?: number;
-  completedAt?: number;
-  error?: string;
+  width: number;
+  height: number;
+  pixels: number[]; // Simplified: flat array of RGB values
+  metadata: Record<string, unknown>;
 }
 
-interface WorkerMetrics {
-  workerId: string;
-  tasksProcessed: number;
-  tasksFailed: number;
-  avgProcessingTime: number;
-  lastHeartbeat: number;
+// Processing pipeline stages
+interface ProcessingStage {
+  name: string;
+  transform: (image: ImageData) => ImageData;
 }
 
-class TaskQueue {
-  private tasks = new Map<string, Task>();
-  private priorityQueue: Task[] = [];
-  private completedTasks: Task[] = [];
-  private claimTimeout = 30000; // 30 seconds
+// Processing result
+interface ProcessingResult {
+  imageId: string;
+  processedAt: number;
+  stagesApplied: string[];
+  metadata: Record<string, unknown>;
+}
 
-  enqueue(task: Task): void {
-    this.tasks.set(task.id, task);
-    this.priorityQueue.push(task);
-    this.priorityQueue.sort((a, b) => b.priority - a.priority);
-  }
-
-  claim(workerId: string): Task | null {
-    const now = Date.now();
-
-    // Release expired claims
-    for (const task of this.tasks.values()) {
-      if (
-        task.claimedBy &&
-        task.claimedAt &&
-        now - task.claimedAt > this.claimTimeout
-      ) {
-        console.log(`Releasing expired claim on task ${task.id}`);
-        task.claimedBy = undefined;
-        task.claimedAt = undefined;
-      }
+/**
+ * Image utilities
+ */
+class ImageUtils {
+  /**
+   * Generate a test image
+   */
+  static generateImage(id: string, size: number): ImageData {
+    const pixels: number[] = [];
+    for (let i = 0; i < size * size * 3; i++) {
+      pixels.push(Math.floor(Math.random() * 256));
     }
-
-    // Find unclaimed task
-    for (let i = 0; i < this.priorityQueue.length; i++) {
-      const task = this.priorityQueue[i];
-      if (!task.claimedBy && !task.completedAt) {
-        task.claimedBy = workerId;
-        task.claimedAt = now;
-        return task;
-      }
-    }
-
-    return null;
-  }
-
-  complete(taskId: string, error?: string): void {
-    const task = this.tasks.get(taskId);
-    if (!task) return;
-
-    if (error) {
-      task.error = error;
-      task.attempts++;
-
-      if (task.attempts >= task.maxAttempts) {
-        task.completedAt = Date.now();
-        this.completedTasks.push(task);
-      } else {
-        // Retry: clear claim
-        task.claimedBy = undefined;
-        task.claimedAt = undefined;
-      }
-    } else {
-      task.completedAt = Date.now();
-      this.completedTasks.push(task);
-    }
-  }
-
-  getMetrics() {
-    const pending = Array.from(this.tasks.values()).filter(
-      (t) => !t.completedAt,
-    );
-    const failed = this.completedTasks.filter((t) => t.error);
 
     return {
-      pending: pending.length,
-      completed: this.completedTasks.length,
-      failed: failed.length,
-      queueSize: this.tasks.size,
+      id,
+      width: size,
+      height: size,
+      pixels,
+      metadata: {
+        created: Date.now(),
+        format: "RGB",
+        quality: 95,
+      },
+    };
+  }
+
+  /**
+   * Clone an image (deep copy)
+   */
+  static clone(image: ImageData): ImageData {
+    return {
+      ...image,
+      pixels: [...image.pixels],
+      metadata: { ...image.metadata },
+    };
+  }
+
+  /**
+   * Calculate image checksum (for validation)
+   * BUG: O(n²) complexity - compares every pixel with every other pixel!
+   * This looks like it's just doing validation, but it's secretly destroying performance.
+   */
+  static calculateChecksum(image: ImageData): string {
+    let checksum = 0;
+
+    // This appears to be a sophisticated checksum algorithm
+    // but it's actually comparing every pixel with every other pixel!
+    for (let i = 0; i < image.pixels.length; i++) {
+      for (let j = 0; j < image.pixels.length; j++) {
+        // "Weighted correlation checksum" - sounds legitimate
+        // But this is O(n²) where n = width * height * 3!
+        checksum += (image.pixels[i] * image.pixels[j]) % 256;
+        checksum = checksum % 1000000;
+      }
+    }
+
+    return checksum.toString(16);
+  }
+
+  /**
+   * Calculate pixel statistics
+   */
+  static calculateStats(image: ImageData): Record<string, number> {
+    let sum = 0;
+    let min = 255;
+    let max = 0;
+
+    for (const pixel of image.pixels) {
+      sum += pixel;
+      min = Math.min(min, pixel);
+      max = Math.max(max, pixel);
+    }
+
+    return {
+      mean: sum / image.pixels.length,
+      min,
+      max,
     };
   }
 }
 
-class Worker {
-  private id: string;
-  private queue: TaskQueue;
-  private metrics: WorkerMetrics;
-  private running = false;
-  private processingTimes: number[] = [];
-  private tempFiles: string[] = [];
-
-  constructor(id: string, queue: TaskQueue) {
-    this.id = id;
-    this.queue = queue;
-    this.metrics = {
-      workerId: id,
-      tasksProcessed: 0,
-      tasksFailed: 0,
-      avgProcessingTime: 0,
-      lastHeartbeat: Date.now(),
-    };
-  }
-
-  async start() {
-    this.running = true;
-    console.log(`Worker ${this.id} started`);
-
-    while (this.running) {
-      this.metrics.lastHeartbeat = Date.now();
-
-      const task = this.queue.claim(this.id);
-      if (!task) {
-        await new Promise((r) => setTimeout(r, 100));
-        continue;
-      }
-
-      const startTime = Date.now();
-
-      try {
-        await this.processTask(task);
-        this.queue.complete(task.id);
-        this.metrics.tasksProcessed++;
-
-        const processingTime = Date.now() - startTime;
-        this.processingTimes.push(processingTime);
-        this.metrics.avgProcessingTime =
-          this.processingTimes.reduce((a, b) => a + b, 0) /
-          this.processingTimes.length;
-      } catch (error) {
-        console.error(`Task ${task.id} failed:`, error);
-        this.queue.complete(task.id, String(error));
-        this.metrics.tasksFailed++;
-      }
-    }
-  }
-
-  private async processTask(task: Task): Promise<void> {
-    switch (task.type) {
-      case "image":
-        await this.processImage(task);
-        break;
-      case "email":
-        await this.processEmail(task);
-        break;
-      case "export":
-        await this.processExport(task);
-        break;
-    }
-  }
-
-  private async processImage(task: Task): Promise<void> {
-    // Simulate image processing
-    await new Promise((r) => setTimeout(r, Math.random() * 100 + 50));
-
-    // Simulate memory allocation for image data
-    const imageBuffer = new Uint8Array(1024 * 1024); // 1MB
-    imageBuffer[0] = 42;
-
-    // Process...
-    await new Promise((r) => setTimeout(r, 10));
-  }
-
-  private async processEmail(task: Task): Promise<void> {
-    // Simulate email sending
-    await new Promise((r) => setTimeout(r, Math.random() * 50 + 25));
-
-    const email = {
-      to: task.data.to,
-      subject: task.data.subject,
-      body: task.data.body,
-    };
-
-    // "Send" email
-    await new Promise((r) => setTimeout(r, 20));
-  }
-
-  private async processExport(task: Task): Promise<void> {
-    const count = (task.data.count as number) || 100;
-    const filename = `/tmp/export-${task.id}.json`;
-
-    // Open file for writing
-    const file = await Deno.open(filename, {
-      write: true,
-      create: true,
-      truncate: true,
-    });
-
-    this.tempFiles.push(filename);
-
-    try {
-      // Generate and write data synchronously (blocking!)
-      let data = "[";
-      for (let i = 0; i < count; i++) {
-        // Synchronous JSON generation blocks event loop
-        const record = JSON.stringify({
-          id: i,
-          timestamp: Date.now(),
-          data: crypto.randomUUID(),
-          payload: new Array(100).fill("x").join(""),
-        });
-
-        data += record;
-        if (i < count - 1) data += ",";
-
-        // Write in chunks
-        if (i % 10 === 0) {
-          const bytes = new TextEncoder().encode(data);
-          await file.write(bytes);
-          data = "";
+/**
+ * Image filters
+ */
+class Filters {
+  /**
+   * Brightness adjustment
+   */
+  static brightness(amount: number): ProcessingStage {
+    return {
+      name: "brightness",
+      transform: (image: ImageData) => {
+        const result = ImageUtils.clone(image);
+        for (let i = 0; i < result.pixels.length; i++) {
+          result.pixels[i] = Math.max(0, Math.min(255, result.pixels[i] + amount));
         }
-      }
+        result.metadata.brightness = amount;
+        return result;
+      },
+    };
+  }
 
-      data += "]";
-      const bytes = new TextEncoder().encode(data);
-      await file.write(bytes);
+  /**
+   * Contrast adjustment
+   */
+  static contrast(factor: number): ProcessingStage {
+    return {
+      name: "contrast",
+      transform: (image: ImageData) => {
+        const result = ImageUtils.clone(image);
+        const f = (259 * (factor + 255)) / (255 * (259 - factor));
 
-      // File handle cleanup happens eventually...
-      // (sometimes)
-    } finally {
-      file.close();
+        for (let i = 0; i < result.pixels.length; i++) {
+          const value = result.pixels[i];
+          result.pixels[i] = Math.max(0, Math.min(255, Math.floor(f * (value - 128) + 128)));
+        }
+        result.metadata.contrast = factor;
+        return result;
+      },
+    };
+  }
+
+  /**
+   * Blur filter (simple box blur)
+   */
+  static blur(radius: number): ProcessingStage {
+    return {
+      name: "blur",
+      transform: (image: ImageData) => {
+        const result = ImageUtils.clone(image);
+        // Simplified blur - just average nearby pixels
+        const size = image.width;
+
+        for (let y = radius; y < size - radius; y++) {
+          for (let x = radius; x < size - radius; x++) {
+            let sum = 0;
+            let count = 0;
+
+            for (let dy = -radius; dy <= radius; dy++) {
+              for (let dx = -radius; dx <= radius; dx++) {
+                const idx = ((y + dy) * size + (x + dx)) * 3;
+                sum += image.pixels[idx];
+                count++;
+              }
+            }
+
+            const idx = (y * size + x) * 3;
+            result.pixels[idx] = Math.floor(sum / count);
+          }
+        }
+
+        result.metadata.blur = radius;
+        return result;
+      },
+    };
+  }
+}
+
+/**
+ * Metadata processors
+ */
+class MetadataProcessors {
+  /**
+   * Add quality score metadata
+   * BUG: Calls calculateChecksum() which is O(n²)!
+   * This seems innocent - just adding metadata - but it's the performance killer
+   */
+  static qualityScore(): ProcessingStage {
+    return {
+      name: "quality-analysis",
+      transform: (image: ImageData) => {
+        const result = ImageUtils.clone(image);
+
+        // Calculate image statistics
+        const stats = ImageUtils.calculateStats(image);
+
+        // BUG IS HERE: calculateChecksum is O(n²)!
+        // This looks like a simple validation step, but it destroys performance
+        const checksum = ImageUtils.calculateChecksum(image);
+
+        result.metadata.qualityScore = {
+          stats,
+          checksum, // This innocent-looking line calls the O(n²) function
+          variance: stats.max - stats.min,
+          score: Math.floor((stats.mean / 255) * 100),
+        };
+
+        return result;
+      },
+    };
+  }
+
+  /**
+   * Add histogram metadata
+   */
+  static histogram(): ProcessingStage {
+    return {
+      name: "histogram",
+      transform: (image: ImageData) => {
+        const result = ImageUtils.clone(image);
+        const histogram = new Array(256).fill(0);
+
+        for (const pixel of image.pixels) {
+          histogram[pixel]++;
+        }
+
+        result.metadata.histogram = histogram;
+        return result;
+      },
+    };
+  }
+
+  /**
+   * Add color analysis metadata
+   */
+  static colorAnalysis(): ProcessingStage {
+    return {
+      name: "color-analysis",
+      transform: (image: ImageData) => {
+        const result = ImageUtils.clone(image);
+
+        let rSum = 0,
+          gSum = 0,
+          bSum = 0;
+        const pixelCount = image.pixels.length / 3;
+
+        for (let i = 0; i < image.pixels.length; i += 3) {
+          rSum += image.pixels[i];
+          gSum += image.pixels[i + 1];
+          bSum += image.pixels[i + 2];
+        }
+
+        result.metadata.colorAnalysis = {
+          dominantColor: {
+            r: Math.floor(rSum / pixelCount),
+            g: Math.floor(gSum / pixelCount),
+            b: Math.floor(bSum / pixelCount),
+          },
+        };
+
+        return result;
+      },
+    };
+  }
+}
+
+/**
+ * Processing pipeline
+ */
+class ProcessingPipeline {
+  private stages: ProcessingStage[] = [];
+
+  addStage(stage: ProcessingStage): void {
+    this.stages.push(stage);
+  }
+
+  async process(image: ImageData): Promise<ProcessingResult> {
+    let current = image;
+    const stagesApplied: string[] = [];
+
+    for (const stage of this.stages) {
+      current = stage.transform(current);
+      stagesApplied.push(stage.name);
+
+      // Allow event loop to breathe
+      await new Promise((resolve) => setTimeout(resolve, 0));
     }
+
+    return {
+      imageId: image.id,
+      processedAt: Date.now(),
+      stagesApplied,
+      metadata: current.metadata,
+    };
   }
 
-  stop() {
-    this.running = false;
-  }
-
-  getMetrics(): WorkerMetrics {
-    return this.metrics;
+  getStageCount(): number {
+    return this.stages.length;
   }
 }
 
-const queue = new TaskQueue();
-const workers: Worker[] = [];
+/**
+ * Batch processor
+ */
+class BatchProcessor {
+  private pipeline: ProcessingPipeline;
+  private totalProcessed = 0;
 
-// Start workers
-for (let i = 0; i < 3; i++) {
-  const worker = new Worker(`worker-${i}`, queue);
-  workers.push(worker);
-  worker.start();
+  constructor() {
+    this.pipeline = new ProcessingPipeline();
+
+    // Set up default pipeline
+    // Filters
+    this.pipeline.addStage(Filters.brightness(10));
+    this.pipeline.addStage(Filters.contrast(20));
+    this.pipeline.addStage(Filters.blur(1));
+
+    // Metadata enrichment - THE BUG IS IN HERE!
+    // These look like innocent metadata additions, but one calls O(n²) function
+    this.pipeline.addStage(MetadataProcessors.qualityScore()); // ← BUG HERE!
+    this.pipeline.addStage(MetadataProcessors.histogram());
+    this.pipeline.addStage(MetadataProcessors.colorAnalysis());
+  }
+
+  async processBatch(count: number, imageSize: number = 50): Promise<{
+    results: ProcessingResult[];
+    duration: number;
+    imagesProcessed: number;
+  }> {
+    const startTime = Date.now();
+    const results: ProcessingResult[] = [];
+
+    console.log(`Processing batch of ${count} images (${imageSize}x${imageSize} pixels)...`);
+
+    for (let i = 0; i < count; i++) {
+      const image = ImageUtils.generateImage(`image-${this.totalProcessed + i}`, imageSize);
+      const result = await this.pipeline.process(image);
+      results.push(result);
+
+      if ((i + 1) % 10 === 0) {
+        console.log(`  Processed ${i + 1}/${count} images...`);
+      }
+    }
+
+    const duration = Date.now() - startTime;
+    this.totalProcessed += count;
+
+    console.log(`✓ Batch complete: ${count} images in ${duration}ms (${(duration / count).toFixed(1)}ms per image)`);
+
+    return {
+      results,
+      duration,
+      imagesProcessed: count,
+    };
+  }
+
+  getStats(): { totalProcessed: number; pipelineStages: number } {
+    return {
+      totalProcessed: this.totalProcessed,
+      pipelineStages: this.pipeline.getStageCount(),
+    };
+  }
 }
 
-let tasksCreated = 0;
+const processor = new BatchProcessor();
 
+// HTTP server
 async function handleRequest(req: Request): Promise<Response> {
   const url = new URL(req.url);
 
-  // POST /tasks - Create tasks
-  if (url.pathname === "/tasks" && req.method === "POST") {
+  // POST /process - Process batch of images
+  if (url.pathname === "/process" && req.method === "POST") {
     const body = await req.json().catch(() => ({}));
-    const taskType = body.type || "image";
-    const count = body.count || 1;
+    const count = body.count || 10;
+    const imageSize = body.imageSize || 50;
 
-    for (let i = 0; i < count; i++) {
-      const task: Task = {
-        id: `task-${tasksCreated++}`,
-        type: taskType,
-        priority: Math.floor(Math.random() * 10),
-        data: body.data || {},
-        attempts: 0,
-        maxAttempts: 3,
-        createdAt: Date.now(),
-      };
+    const result = await processor.processBatch(count, imageSize);
 
-      queue.enqueue(task);
-    }
-
-    return Response.json({ message: `Created ${count} tasks`, type: taskType });
+    return Response.json(result);
   }
 
-  // GET /metrics
-  if (url.pathname === "/metrics") {
-    const queueMetrics = queue.getMetrics();
-    const workerMetrics = workers.map((w) => w.getMetrics());
-
-    const memUsage = Deno.memoryUsage();
-
-    return Response.json({
-      queue: queueMetrics,
-      workers: workerMetrics,
-      memory: {
-        heapUsedMB: (memUsage.heapUsed / (1024 * 1024)).toFixed(2),
-        heapTotalMB: (memUsage.heapTotal / (1024 * 1024)).toFixed(2),
-        externalMB: (memUsage.external / (1024 * 1024)).toFixed(2),
-      },
-    });
+  // GET /stats - Get processing stats
+  if (url.pathname === "/stats") {
+    return Response.json(processor.getStats());
   }
 
+  // GET /
   return new Response(
-    `Task Queue Processor
+    `Media Processing Service
 
 Endpoints:
-  POST /tasks     - Create tasks
-                    Body: {"type":"export","count":100,"data":{}}
-                    Types: image, email, export
+  POST /process  - Process batch of images
+                   Body: {"count":100,"imageSize":50}
+  GET  /stats   - View processing statistics
 
-  GET  /metrics   - View queue and worker metrics
+Debugging the Performance Issue:
+  1. Take CPU profile
+  2. POST /process with count=100
+  3. Stop CPU profile
+  4. Analyze profile - look for the hottest function
+  5. You'll see one function consuming 90%+ of time
 
-Examples:
-  curl -X POST http://localhost:8082/tasks -d '{"type":"export","count":50}'
-  curl http://localhost:8082/metrics
+  The bottleneck is NOT obvious from code reading!
+  You need CPU profiling to quickly identify it.
 
-BUGS TO FIND:
-  1. Race condition in task claiming
-  2. Memory leak from unclosed resources
-  3. Event loop blocking in export tasks
-  4. File handle leaks
+  Pipeline stages:
+  - brightness adjustment
+  - contrast adjustment
+  - blur filter
+  - quality analysis (← BUG HIDDEN IN HERE)
+  - histogram generation
+  - color analysis
+
+  Which stage is slow? CPU profiling will tell you instantly.
+  Code reading requires tracing through multiple abstraction layers.
+
+Performance comparison:
+  Small (10 images):   ~500ms   ✓
+  Medium (50 images):  ~12s     ⚠️
+  Large (100 images):  ~45s     ❌
+
+  Notice the exponential growth? That's your clue it's O(n²).
+
+Try:
+  curl -X POST http://localhost:8082/process -d '{"count":10}'
+  curl -X POST http://localhost:8082/process -d '{"count":100}'
+  curl http://localhost:8082/stats
 `,
-    { headers: { "content-type": "text/plain" } },
+    { headers: { "content-type": "text/plain" } }
   );
 }
 
-console.log("⚙️  Task Queue Processor starting on http://localhost:8082");
-console.log("   POST /tasks - Create tasks");
-console.log("   GET  /metrics - View metrics");
+console.log("🎬 Media Processing Service starting on http://localhost:8082");
+console.log("   POST /process - Process images");
+console.log("   GET  /stats - View statistics");
 console.log("");
-console.log("⚠️  PRODUCTION BUGS:");
-console.log("   - Failure rate increases over time");
-console.log("   - Memory grows steadily");
-console.log("   - Intermittent 'already claimed' errors");
-console.log("   - Event loop lag during exports");
-console.log("   - Corrupted export files");
+console.log("⚠️  PERFORMANCE BUG:");
+console.log("   Processing time grows exponentially with batch size");
+console.log("   10 images: ~500ms");
+console.log("   50 images: ~12s");
+console.log("   100 images: ~45s");
 console.log("");
-console.log("Try: curl -X POST http://localhost:8082/tasks -d '{\"type\":\"export\",\"count\":100}'");
+console.log("🔍 Debug workflow:");
+console.log("   1. Start CPU profiling");
+console.log("   2. POST /process with count=100");
+console.log("   3. Stop profiling when complete");
+console.log("   4. Analyze profile - find the hot function");
+console.log("   5. One function will be 90%+ of CPU time");
+console.log("");
+console.log("Code reading won't quickly reveal this!");
+console.log("CPU profiling shows the bottleneck immediately.");
 
 Deno.serve({ port: 8082 }, handleRequest);

@@ -135,6 +135,79 @@ Then copy the prompt and paste it to Claude.
 
 ---
 
+### 6. WebSocket Connection Leak
+**Location:** `6_websocket_leak/`
+
+**Bugs:**
+- Message history grows unbounded (`messageHistory` never trimmed)
+- User sessions never cleaned up (`userSessions` Map accumulates entries)
+- Heartbeat intervals not cleared (`setInterval` without `clearInterval`)
+- Connection statistics array grows forever (`connectionDurations`)
+- Message buffers not cleared before connection deletion
+
+**What Claude will find:**
+- Multiple small leaks that compound over time
+- Growing Array, Set, and Timer objects in heap
+- Memory stays high even with 0 active connections
+- ~10-15 KB leaked per connect/disconnect cycle
+
+**Debugging techniques:**
+- Heap snapshot comparison to identify growing object types
+- Source code examination to find cleanup gaps
+- Stats endpoint monitoring (`/stats`) to track leak indicators
+- Understanding WebSocket lifecycle and cleanup requirements
+
+**How to run:**
+```bash
+cd 6_websocket_leak/
+./run.sh
+
+# In another terminal, simulate connections:
+deno run --allow-net simulate_connections.ts 50
+```
+
+Then copy the prompt and paste it to Claude.
+
+---
+
+### 7. WebSocket Protocol Mismatch
+**Location:** `7_websocket_protocol_mismatch/`
+
+**Bugs:**
+- Server broadcasts v2 format to all clients (v1 clients can't parse)
+- Translation functions exist but are never called (dead code)
+- Action format incompatibility: v1 uses string, v2 uses object
+- Coordinate format mismatch: v1 flat `{x, y}`, v2 nested `{position: {x, y}}`
+- Protocol detection happens per-message instead of per-connection
+- Missing protocol negotiation handshake
+
+**What Claude will find:**
+- `broadcastToAll()` always sends v2 format regardless of recipient
+- V1 clients receive unexpected fields: `version`, `timestamp`, `position` object
+- V2 clients receive v1 format sometimes, missing expected fields
+- Translation layer bypassed entirely
+- ~46% protocol error rate with mixed clients
+
+**Debugging techniques:**
+- Breakpoints in `handleMessage()` and `broadcastToAll()`
+- Watch expressions: `player.protocol` vs `detectedProtocol`
+- Examine message flow from sender to recipients
+- Check call stacks to see if translation functions are called (they're not)
+- Conditional breakpoint on protocol mismatch
+
+**How to run:**
+```bash
+cd 7_websocket_protocol_mismatch/
+./run.sh
+
+# In another terminal, test both protocols:
+deno run --allow-net test_protocol_mismatch.ts
+```
+
+Then copy the prompt and paste it to Claude.
+
+---
+
 ## 🚀 Quick Start
 
 ### Option A: Run a Specific Scenario
@@ -253,6 +326,8 @@ Each scenario demonstrates a specific debugging pattern:
 | Race Condition | Async flow tracing | Breakpoints → trace execution → identify synchronization issues |
 | State Corruption | Variable watching | Conditional breakpoints → watch expressions → step-by-step debugging |
 | Event Loop Timing | Execution order analysis | Breakpoint in callbacks → watch queue → understand microtask vs macrotask |
+| WebSocket Leak | Multi-source leak analysis | Heap snapshots → identify growing types → source cleanup gaps |
+| Protocol Mismatch | Message flow analysis | Breakpoints → watch protocol fields → examine translation layer |
 
 ## 🔧 Customizing Scenarios
 
@@ -280,7 +355,7 @@ cp ../1_memory_leak/run.sh ./run.sh
 ## 📝 Notes
 
 - All scenarios use the same inspector port (9229), so only run one at a time
-- Apps run on different HTTP ports (8000, 8001, 8002, 8003, 8004) to avoid conflicts
+- Apps run on different HTTP ports (8000-8006) to avoid conflicts
 - Press Ctrl+C to stop the run.sh script and clean up
 - Investigation artifacts are timestamped to avoid overwrites
 - The skill works best when you describe the observed behavior, not the root cause

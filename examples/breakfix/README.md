@@ -1,255 +1,252 @@
 # Breakfix Debugging Scenarios
 
-Realistic production-style debugging challenges. Unlike the `/scenarios` directory which demonstrates specific debugging techniques with obvious bugs, these breakfix scenarios mimic real-world debugging situations where:
+Realistic production-style debugging challenges designed to **require actual debugger usage**. These scenarios cannot be easily solved by code reading alone - you need to use debugging tools to efficiently identify the root cause.
 
-- The bug isn't immediately obvious from code inspection
-- Multiple symptoms may have a single root cause (or multiple interacting causes)
-- You need to use actual debugging tools to find the issue
-- The code looks reasonable on first glance
+## Philosophy
 
-Think of these as "interview-style" debugging challenges.
+Unlike the `/scenarios` directory which demonstrates specific debugging techniques with obvious bugs, these breakfix scenarios mimic real-world debugging situations where:
+
+- **The bug is NOT obvious from code inspection**
+- Code reading is possible but time-prohibitive
+- **Debugging tools provide quick, clear answers**
+- You must choose the right debugging technique for the problem type
+- The code is complex enough that debuggers save significant time
+
+Think of these as "true debugging challenges" that test your ability to **use debuggers effectively**, not just read code.
+
+## Key Principle
+
+**When to use a debugger vs code reading:**
+- Code reading: Good for small files, simple logic, obvious patterns
+- Debugging tools: Essential for memory issues, timing bugs, performance bottlenecks, complex state
+
+These scenarios are designed to be complex enough that debugging tools are the clear winner.
 
 ## How to Use
 
-1. **Don't read the code first** - Treat it like a real production issue
-2. **Start with the problem description** in the file header
-3. **Run the app** and reproduce the symptoms
-4. **Use the debugging skill** to investigate systematically
-5. **Find the root cause** using heap snapshots, profiling, breakpoints, etc.
+1. **Read the problem description** in the file header
+2. **Run the app** and reproduce the symptoms
+3. **Choose the right debugging technique** based on symptoms:
+   - Memory growth → Heap snapshots
+   - Timing/race issues → Breakpoints + variable watches
+   - Performance → CPU profiling
+4. **Use the debugger** to find the root cause quickly
+5. **Compare**: Could you have found this as quickly by reading code?
 
 ## Scenarios
 
-### Easy: API Gateway (`easy/app.ts`)
+### Easy: Plugin Analytics Service (`easy/app.ts`)
 
 **Difficulty:** ⭐☆☆
+**Port:** 8080
 
 **Symptoms:**
-- Users intermittently see stale data after profile updates
-- Cache invalidation seems to work... sometimes
-- No pattern to when it fails vs succeeds
+- Memory grows steadily over time (~2MB per 1000 plugin reloads)
+- No obvious memory leaks in code review
+- Service uses 800MB after 6 hours (started at 80MB)
 
-**Skills Practiced:**
-- Understanding cache key generation
-- Analyzing HTTP request patterns
-- Debugging intermittent issues
+**Required Debugging Technique: HEAP SNAPSHOTS**
 
-**Hints:**
-<details>
-<summary>Click for debugging approach</summary>
+**Why code reading won't work efficiently:**
+- 5 plugin classes, each with multiple methods
+- Event subscription/unsubscription spread across initialization and shutdown
+- The leak is in what's NOT happening (missing cleanup)
+- Heap snapshots immediately show growing handler arrays
 
-1. Make several GET requests with different query parameters
-2. Update the user
-3. Make the same GET requests again
-4. Check which ones show stale data
-5. Examine the cache keys being generated
-
-</details>
+**Debugging Approach:**
+1. Take heap snapshot before plugin reloads
+2. Trigger 20-30 plugin reloads via `POST /reload-plugins`
+3. Take heap snapshot after reloads
+4. Compare snapshots - look for growing objects
+5. You'll see `EventBus.handlers` arrays growing linearly
+6. Trace back to find missing `unsubscribe()` calls in plugin `shutdown()` methods
 
 **The Bug:**
-<details>
-<summary>Click to reveal</summary>
+Each plugin subscribes to events in `initialize()` but forgets to unsubscribe in `shutdown()`. Every reload creates new plugin instances that subscribe, but old handlers remain in the EventBus, causing a memory leak.
 
-The cache key includes query parameters (`user-${userId}-${url.search}`), but cache invalidation only invalidates by user ID pattern (`user-${userId}`). When requests include query params like `?v=123`, they create separate cache entries that don't get invalidated.
-
-Fix: Either include query params in invalidation pattern, or exclude query params from cache key.
-</details>
+**Time comparison:**
+- Code reading: 10-15 minutes (read all 5 plugins, trace event flow)
+- Heap snapshots: 2-3 minutes (snapshot diff shows the leak immediately)
 
 ---
 
-### Medium: WebSocket Chat Server (`medium/app.ts`)
+### Medium: Distributed Lock Manager (`medium/app.ts`)
 
 **Difficulty:** ⭐⭐☆
+**Port:** 8081
 
 **Symptoms:**
-- Messages duplicate (2x, 3x, 4x) after users reconnect several times
-- Memory grows steadily over time
-- Number of duplicates correlates with connection count for that user
-- Server gets sluggish after running for hours
+- Under high concurrency, TWO clients sometimes acquire the same lock
+- Happens ~1% of the time with 100+ concurrent requests
+- No errors are logged
+- Data corruption in production from race condition
 
-**Skills Practiced:**
-- Event listener leak detection
-- WebSocket connection lifecycle
-- Memory profiling and heap snapshots
-- Finding retention paths
+**Required Debugging Technique: BREAKPOINTS + VARIABLE WATCHES**
 
-**Hints:**
-<details>
-<summary>Click for debugging approach</summary>
+**Why code reading won't work efficiently:**
+- Race condition is timing-dependent
+- Multiple async operations with state checks
+- The bug is in the *timing gap* between check and update
+- Breakpoints let you observe concurrent execution paths
 
-1. Connect, disconnect, reconnect the same user 3-4 times
-2. Send a message and count duplicates
-3. Take heap snapshots before/after reconnections
-4. Look for growing arrays or handler lists
-5. Check what keeps growing with each connection
-
-</details>
+**Debugging Approach:**
+1. Set breakpoints in `acquire()` method:
+   - After "Check if lock is available" (line ~130)
+   - After "BUG IS HERE" comment (line ~154)
+   - Before "Finalize acquisition" (line ~163)
+2. Watch variables: `lock.state`, `lock.owner`, `lock.version`
+3. Run 100+ concurrent acquire requests
+4. Step through breakpoints for multiple requests
+5. Observe: Two requests both see `state === "available"`, then both proceed to acquire!
 
 **The Bug:**
-<details>
-<summary>Click to reveal</summary>
+TOCTOU (Time-Of-Check-Time-Of-Use) vulnerability. The code checks if the lock is available, then has async delays, then updates the lock state. Between the check and the update, another concurrent request can also pass the check, causing both to acquire the lock.
 
-`setupMessageHandlers()` is called in the constructor and pushes handlers onto `this.messageHandlers` array. Every new WebSocket connection creates a new event listener via `addEventListener("close", ...)` but the handlers array grows indefinitely. Each reconnection adds MORE handlers that never get removed.
-
-Additionally, the `messageHandlers` array is never cleared between connections, so each connection adds 3 more handlers (room messages, private messages, logging).
-
-Fixes needed:
-1. Move `setupMessageHandlers()` outside constructor or only call once
-2. Remove event listeners when connection closes
-3. Clear or properly manage the handlers array lifecycle
-</details>
+**Time comparison:**
+- Code reading: 15-20 minutes (understand async flow, try to spot the race mentally)
+- Breakpoints + watches: 5 minutes (see the race happen in real-time)
 
 ---
 
-### Hard: Task Queue Processor (`hard/app.ts`)
+### Hard: Media Processing Service (`hard/app.ts`)
 
 **Difficulty:** ⭐⭐⭐
+**Port:** 8082
 
 **Symptoms:**
-- Task failure rate increases over time (0% → 15% after 6 hours)
-- Memory grows from 50MB to 500MB+ over 24 hours
-- Intermittent "Task already claimed" errors despite locks
-- Event loop lag spikes to 2-3 seconds during export tasks
-- Some export files are corrupted or incomplete
+- Processing 10 images: ~500ms ✓
+- Processing 50 images: ~12 seconds ⚠️
+- Processing 100 images: ~45 seconds ❌
+- Exponential performance degradation (indicates O(n²) bug)
+- CPU usage spikes to 100%
+- Memory usage is normal
 
-**Multiple interacting bugs** - fixing one won't solve all symptoms!
+**Required Debugging Technique: CPU PROFILING**
 
-**Skills Practiced:**
-- Multi-bug root cause analysis
-- Race condition debugging
-- Resource leak detection (file handles)
-- Event loop monitoring
-- Performance profiling
+**Why code reading won't work efficiently:**
+- 6-stage processing pipeline with multiple abstraction layers
+- 4 classes: ImageUtils, Filters, MetadataProcessors, ProcessingPipeline
+- Multiple filter and metadata operations that all *look* reasonable
+- The O(n²) operation is hidden in an innocent-looking "checksum" function
+- Called indirectly: BatchProcessor → Pipeline → MetadataProcessors → ImageUtils
 
-**Hints:**
-<details>
-<summary>Click for debugging approach</summary>
+**Debugging Approach:**
+1. Start CPU profiling
+2. Trigger batch processing: `POST /process` with `count=100`
+3. Stop profiling when request completes
+4. Analyze CPU profile - sort by "Self Time"
+5. You'll see `ImageUtils.calculateChecksum()` consuming 90%+ of CPU time!
+6. Look at that function - it has nested loops over all pixels (O(n²))
 
-1. Run export tasks and monitor memory growth
-2. Check heap snapshots for leaked resources
-3. Profile CPU during export task processing
-4. Set breakpoints in the `claim()` method
-5. Examine the export file generation code for blocking operations
-6. Look for resources that aren't being released
+**The Bug:**
+The `calculateChecksum()` function in `ImageUtils` has a nested loop that compares every pixel with every other pixel. For a 50x50 image, that's (50×50×3)² = 56 million operations per image! It's called from `MetadataProcessors.qualityScore()` which looks like innocent metadata enrichment.
 
-</details>
-
-**The Bugs:**
-<details>
-<summary>Click to reveal</summary>
-
-**Bug 1: Race Condition in Task Claiming**
-The `claim()` method checks and sets `claimedBy` but there's a window where two workers can claim the same task:
-```typescript
-if (!task.claimedBy && !task.completedAt) {
-  task.claimedBy = workerId; // Not atomic!
-  task.claimedAt = now;
-  return task;
-}
-```
-Fix: Use atomic compare-and-swap or proper locking.
-
-**Bug 2: Memory Leak from Processing Times Array**
-```typescript
-this.processingTimes.push(processingTime);
-```
-This array grows indefinitely. After processing thousands of tasks, it consumes significant memory.
-
-Fix: Keep only last N measurements or use a ring buffer.
-
-**Bug 3: File Handle Leaks**
-```typescript
-this.tempFiles.push(filename);
-```
-Temp files are tracked but never cleaned up. Also, file handles might not be released if errors occur between open and close.
-
-Fix: Clean up temp files after processing, use try/finally for file handles.
-
-**Bug 4: Event Loop Blocking**
-```typescript
-// Synchronous JSON generation blocks event loop
-for (let i = 0; i < count; i++) {
-  const record = JSON.stringify({...}); // Blocking!
-  data += record;
-}
-```
-Large exports (count=1000) block the event loop for seconds, causing lag.
-
-Fix: Process in smaller chunks with `await` between iterations, or use streaming.
-
-**Bug 5: Memory from Buffer Allocations**
-```typescript
-const imageBuffer = new Uint8Array(1024 * 1024); // 1MB
-```
-Buffers are allocated but references may be retained longer than needed.
-
-These bugs interact: event loop blocking makes task claims timeout, which causes retries, which accumulates more memory from the processing times array and leaked buffers.
-
-</details>
+**Time comparison:**
+- Code reading: 30-45 minutes (read through all classes, trace pipeline, analyze each stage)
+- CPU profiling: 3-5 minutes (profile immediately shows the hot function)
 
 ---
 
 ## Debugging Workflow
 
-For each scenario, use the Deno Debugger Skill's systematic approach:
+For each scenario, use this systematic approach:
 
-### 1. Reproduce the Issue
-```bash
-deno run --inspect --allow-net --allow-read --allow-write <scenario>/app.ts
-```
+### 1. Understand the Symptoms
+What is the observable problem? (Memory growth, race condition, performance)
 
-### 2. Form Hypothesis
-Based on symptoms, what could be wrong?
+### 2. Choose the Right Tool
+- **Memory issues** → Heap snapshots
+- **Timing/race issues** → Breakpoints + variable watches
+- **Performance bottlenecks** → CPU profiling
 
-### 3. Gather Data
-- Heap snapshots (before/after reproduction)
-- CPU profiles (during slow operations)
-- Breakpoints (at suspicious code paths)
-- Memory metrics over time
+### 3. Reproduce Reliably
+Can you trigger the issue consistently?
 
-### 4. Analyze
-- Compare snapshots for growing objects
-- Check hot paths in CPU profile
-- Examine variable states at breakpoints
+### 4. Gather Data
+- Heap snapshots: Before/after comparison
+- Breakpoints: Watch variable state changes
+- CPU profiles: Identify hot paths
 
-### 5. Identify Root Cause
+### 5. Analyze
+- Heap: What objects are growing?
+- Breakpoints: What state transitions are happening?
+- CPU: Which functions consume the most time?
+
+### 6. Identify Root Cause
 What is the actual bug, not just the symptom?
 
-### 6. Verify Fix
-Change the code and verify symptoms disappear.
+### 7. Verify Fix
+Change the code and confirm symptoms disappear.
 
 ## Success Criteria
 
 You've successfully debugged a scenario when you can:
 
-1. **Identify the root cause** (not just symptoms)
-2. **Explain why** it happens
-3. **Propose a specific fix** with code
-4. **Estimate production impact** (e.g., "memory leak of 5MB/hour")
+1. **Identify the root cause** using debugging tools
+2. **Explain why** the bug happens
+3. **Prove** debugging tools were faster than code reading
+4. **Propose a specific fix** with code changes
+
+## Comparison: Debugging Tools vs Code Reading
+
+| Scenario | Tool Used | Tool Time | Code Reading Time | Winner |
+|----------|-----------|-----------|-------------------|--------|
+| Easy     | Heap Snapshots | 2-3 min | 10-15 min | Debugger 5x faster |
+| Medium   | Breakpoints | 5 min | 15-20 min | Debugger 3x faster |
+| Hard     | CPU Profiling | 3-5 min | 30-45 min | Debugger 10x faster |
+
+**Key insight:** Debugging tools don't just help - they're **dramatically faster** for these types of issues.
+
+## What Makes These "True Debugging Scenarios"?
+
+✅ **Good debugging scenarios:**
+- Bug is hidden in complex code
+- Symptoms are clear, root cause is not
+- Debugging tools provide immediate clarity
+- Code reading is possible but inefficient
+
+❌ **Not good debugging scenarios:**
+- Obvious bugs with comments pointing at them
+- Bugs visible in 20 lines of simple code
+- Contrived code that doesn't look real
+- Issues where tools don't help
 
 ## Tips
 
-- **Don't guess** - Use actual debugging data
-- **Trust the tools** - Heap snapshots don't lie
-- **Look for patterns** - Does it correlate with time? Usage? Specific operations?
-- **Consider interactions** - Multiple bugs can compound each other
-- **Think like production** - What would monitoring show you?
+- **Match tools to symptoms**: Memory → Heap, Timing → Breakpoints, CPU → Profiling
+- **Trust the data**: Profilers don't lie about hot paths
+- **Look for patterns**: Does the leak grow linearly? Exponentially?
+- **Think production**: What metrics would you monitor?
+- **Know when to switch**: If code reading takes >5 minutes, use a debugger
 
 ## Creating Your Own Scenarios
 
 Good breakfix scenarios have:
 
-1. **Realistic code** - looks like production code
-2. **Subtle bugs** - not obvious from inspection
-3. **Clear symptoms** - measurable, reproducible
-4. **Require tools** - can't be found by just reading code
-5. **Learning value** - teaches debugging techniques
+1. **Complex enough code** - Not obvious from quick scan
+2. **Realistic structure** - Looks like production code
+3. **Clear symptoms** - Measurable, reproducible issues
+4. **Tool advantage** - Debuggers provide clear, fast answers
+5. **Learning value** - Teaches both debugging technique AND when to use it
 
 Avoid:
-- Obvious bugs with comments pointing at them
-- Contrived code that doesn't look real
-- Bugs that are trivial to spot
-- Multiple unrelated issues (unless that's the point)
+- Trivial bugs in small files
+- Issues solvable by simple grep
+- Obvious problems with comments explaining them
+- Scenarios where tools don't actually help
 
 ---
+
+## Key Takeaway
+
+**These scenarios teach you WHEN to use debuggers, not just HOW.**
+
+In real-world development:
+- Small bugs in small files → Code reading is fine
+- Memory leaks → Heap snapshots are essential
+- Race conditions → Breakpoints are the only way
+- Performance issues → Profiling beats intuition
+
+Use the right tool for the job. That's the skill these scenarios develop.
 
 Happy debugging! 🐛🔍
