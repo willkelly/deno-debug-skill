@@ -1,293 +1,479 @@
 /**
- * Real-time Chat Server
+ * Distributed Lock Manager Service
  *
- * WebSocket-based chat server supporting multiple rooms and private messages.
+ * A service that manages distributed locks for coordinating access to shared
+ * resources across multiple clients. Supports lock acquisition, renewal,
+ * and automatic expiration.
  *
  * PROBLEM REPORT:
- * The chat server works fine initially, but after running for a few hours with
- * active users connecting/disconnecting:
- * - Messages start getting duplicated (users see the same message 2-3 times)
- * - Memory usage grows steadily
- * - Server becomes sluggish over time
+ * In production, we're seeing intermittent data corruption. Logs show that
+ * sometimes TWO clients successfully acquire the same lock simultaneously.
+ * This should be impossible with our locking logic. The issue is rare but
+ * reproducible under high load (happens ~1% of attempts).
  *
- * The issue gets worse as users reconnect. A user who reconnects 5 times might
- * see messages duplicated 5 times.
+ * Symptoms:
+ * - Lock state shows "acquired" by client A
+ * - Milliseconds later, also shows "acquired" by client B
+ * - Both clients think they have exclusive access
+ * - No errors are logged during acquisition
  *
  * TO TEST:
  * 1. Start: deno run --inspect --allow-net medium/app.ts
- * 2. Connect multiple times: websocat ws://localhost:8081/chat/alice
- * 3. Send messages and watch for duplication
- * 4. Monitor memory growth with heap snapshots
+ * 2. Run concurrent acquisitions:
+ *    for i in {1..50}; do curl -X POST http://localhost:8081/acquire -d '{"lockId":"resource-1","clientId":"client-A"}' & done
+ *    for i in {1..50}; do curl -X POST http://localhost:8081/acquire -d '{"lockId":"resource-1","clientId":"client-B"}' & done
+ * 3. Check locks: curl http://localhost:8081/locks
+ * 4. Occasionally see both clients listed as owner
+ *
+ * DEBUGGING HINT:
+ * Set breakpoints in the acquire() method at these locations:
+ * - Line where we check if lock exists
+ * - Line where we check if lock is held
+ * - Line where we set the new owner
+ *
+ * Watch these variables:
+ * - lock.owner
+ * - lock.state
+ * - lock.acquiredAt
+ *
+ * Run 100+ concurrent requests and step through to catch the race.
+ * The bug involves checking state and updating it in separate steps.
  */
 
-interface User {
+type LockState = "available" | "acquiring" | "acquired" | "releasing";
+
+interface Lock {
   id: string;
-  username: string;
-  ws: WebSocket;
-  rooms: Set<string>;
-  connectedAt: number;
-  messageCount: number;
+  owner: string | null;
+  state: LockState;
+  acquiredAt: number | null;
+  expiresAt: number | null;
+  renewCount: number;
+  version: number; // Optimistic locking version
 }
 
-interface ChatMessage {
-  type: "message" | "join" | "leave" | "error";
-  from?: string;
-  to?: string;
-  room?: string;
-  text?: string;
-  timestamp: number;
+interface LockRequest {
+  lockId: string;
+  clientId: string;
+  ttl?: number;
 }
 
-class ChatServer {
-  private users = new Map<string, User>();
-  private rooms = new Map<string, Set<string>>(); // room -> user IDs
-  private messageHandlers: Array<(msg: ChatMessage, userId: string) => void> = [];
+interface LockStats {
+  totalAcquires: number;
+  totalReleases: number;
+  totalRenewals: number;
+  totalExpired: number;
+  totalRejected: number;
+  currentHeld: number;
+  doubleAcquireDetected: number;
+}
+
+class LockManager {
+  private locks = new Map<string, Lock>();
+  private stats: LockStats = {
+    totalAcquires: 0,
+    totalReleases: 0,
+    totalRenewals: 0,
+    totalExpired: 0,
+    totalRejected: 0,
+    currentHeld: 0,
+    doubleAcquireDetected: 0,
+  };
+  private readonly defaultTTL = 30000; // 30 seconds
+  private readonly maxTTL = 300000; // 5 minutes
 
   constructor() {
-    // Set up message routing
-    this.setupMessageHandlers();
+    // Background task to clean up expired locks
+    setInterval(() => this.cleanupExpiredLocks(), 1000);
   }
 
-  private setupMessageHandlers() {
-    // Handler for room messages
-    this.messageHandlers.push((msg, userId) => {
-      if (msg.type === "message" && msg.room) {
-        this.broadcastToRoom(msg.room, msg, userId);
-      }
-    });
+  /**
+   * Attempt to acquire a lock
+   * BUG: Race condition between checking state and updating it
+   */
+  async acquire(request: LockRequest): Promise<{ success: boolean; lock?: Lock; error?: string }> {
+    const { lockId, clientId, ttl = this.defaultTTL } = request;
 
-    // Handler for private messages
-    this.messageHandlers.push((msg, userId) => {
-      if (msg.type === "message" && msg.to) {
-        this.sendPrivateMessage(msg, userId);
-      }
-    });
-
-    // Handler for logging
-    this.messageHandlers.push((msg, userId) => {
-      const user = this.users.get(userId);
-      if (user) {
-        user.messageCount++;
-      }
-    });
-  }
-
-  async handleConnection(req: Request): Promise<Response> {
-    const url = new URL(req.url);
-    const pathMatch = url.pathname.match(/^\/chat\/(\w+)$/);
-
-    if (!pathMatch) {
-      return new Response("Invalid path. Use /chat/:username", { status: 400 });
+    // Validate TTL
+    if (ttl > this.maxTTL) {
+      return { success: false, error: `TTL exceeds maximum of ${this.maxTTL}ms` };
     }
 
-    const username = pathMatch[1];
-
-    // Upgrade to WebSocket
-    const { socket, response } = Deno.upgradeWebSocket(req);
-
-    const userId = `${username}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    const user: User = {
-      id: userId,
-      username,
-      ws: socket,
-      rooms: new Set(["general"]),
-      connectedAt: Date.now(),
-      messageCount: 0,
-    };
-
-    socket.onopen = () => {
-      this.users.set(userId, user);
-      this.joinRoom(userId, "general");
-
-      // Send welcome message
-      this.sendToUser(userId, {
-        type: "message",
-        from: "System",
-        text: `Welcome ${username}! You're in room 'general'`,
-        timestamp: Date.now(),
-      });
-
-      console.log(`✓ ${username} connected (${this.users.size} total users)`);
-
-      // Set up connection-specific handlers
-      const heartbeatHandler = () => {
-        if (socket.readyState === WebSocket.OPEN) {
-          socket.send(JSON.stringify({ type: "ping" }));
-        }
+    // Get or create lock
+    let lock = this.locks.get(lockId);
+    if (!lock) {
+      lock = {
+        id: lockId,
+        owner: null,
+        state: "available",
+        acquiredAt: null,
+        expiresAt: null,
+        renewCount: 0,
+        version: 0,
       };
-
-      // Send heartbeat every 30 seconds
-      const heartbeatInterval = setInterval(heartbeatHandler, 30000);
-
-      // Add cleanup when socket closes
-      socket.addEventListener("close", () => {
-        clearInterval(heartbeatInterval);
-      });
-    };
-
-    socket.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data) as ChatMessage;
-        msg.from = username;
-        msg.timestamp = Date.now();
-
-        // Process through all message handlers
-        for (const handler of this.messageHandlers) {
-          handler(msg, userId);
-        }
-      } catch (error) {
-        this.sendToUser(userId, {
-          type: "error",
-          text: `Invalid message: ${error}`,
-          timestamp: Date.now(),
-        });
-      }
-    };
-
-    socket.onerror = (error) => {
-      console.error(`WebSocket error for ${username}:`, error);
-    };
-
-    socket.onclose = () => {
-      const user = this.users.get(userId);
-      if (user) {
-        for (const room of user.rooms) {
-          this.leaveRoom(userId, room);
-        }
-        this.users.delete(userId);
-      }
-      console.log(`✗ ${username} disconnected (${this.users.size} remaining)`);
-    };
-
-    return response;
-  }
-
-  private joinRoom(userId: string, roomName: string) {
-    const user = this.users.get(userId);
-    if (!user) return;
-
-    if (!this.rooms.has(roomName)) {
-      this.rooms.set(roomName, new Set());
+      this.locks.set(lockId, lock);
     }
 
-    this.rooms.get(roomName)!.add(userId);
-    user.rooms.add(roomName);
-
-    this.broadcastToRoom(roomName, {
-      type: "join",
-      from: user.username,
-      room: roomName,
-      timestamp: Date.now(),
-    });
-  }
-
-  private leaveRoom(userId: string, roomName: string) {
-    const user = this.users.get(userId);
-    if (!user) return;
-
-    const room = this.rooms.get(roomName);
-    if (room) {
-      room.delete(userId);
-      if (room.size === 0) {
-        this.rooms.delete(roomName);
-      }
+    // Check if already owned by this client
+    if (lock.owner === clientId && lock.state === "acquired") {
+      // Renew the lock
+      return this.renew(lockId, clientId, ttl);
     }
 
-    user.rooms.delete(roomName);
+    // Simulate some async processing delay (represents network/IO)
+    await this.simulateAsyncDelay();
 
-    this.broadcastToRoom(roomName, {
-      type: "leave",
-      from: user.username,
-      room: roomName,
-      timestamp: Date.now(),
-    });
-  }
+    // BUG: TOCTOU (Time-Of-Check-Time-Of-Use) vulnerability
+    // Between checking state and setting it, another request could modify it
 
-  private broadcastToRoom(roomName: string, msg: ChatMessage, excludeUserId?: string) {
-    const room = this.rooms.get(roomName);
-    if (!room) return;
-
-    const msgStr = JSON.stringify(msg);
-    for (const userId of room) {
-      if (userId !== excludeUserId) {
-        const user = this.users.get(userId);
-        if (user && user.ws.readyState === WebSocket.OPEN) {
-          user.ws.send(msgStr);
-        }
-      }
+    // Check if lock is available
+    if (lock.state !== "available") {
+      this.stats.totalRejected++;
+      return {
+        success: false,
+        error: `Lock is ${lock.state} by ${lock.owner}`,
+      };
     }
-  }
 
-  private sendPrivateMessage(msg: ChatMessage, fromUserId: string) {
-    const toUser = Array.from(this.users.values()).find((u) => u.username === msg.to);
-
-    if (toUser && toUser.ws.readyState === WebSocket.OPEN) {
-      toUser.ws.send(JSON.stringify(msg));
-    } else {
-      this.sendToUser(fromUserId, {
-        type: "error",
-        text: `User ${msg.to} not found`,
-        timestamp: Date.now(),
-      });
+    // Check if lock has expired (owner still set but past expiration)
+    const now = Date.now();
+    if (lock.expiresAt && now > lock.expiresAt) {
+      console.log(`Lock ${lockId} expired, releasing from ${lock.owner}`);
+      lock.state = "available";
+      lock.owner = null;
+      lock.acquiredAt = null;
+      lock.expiresAt = null;
+      this.stats.totalExpired++;
     }
-  }
 
-  private sendToUser(userId: string, msg: ChatMessage) {
-    const user = this.users.get(userId);
-    if (user && user.ws.readyState === WebSocket.OPEN) {
-      user.ws.send(JSON.stringify(msg));
-    }
-  }
+    // Another async delay (database write, etc.)
+    await this.simulateAsyncDelay();
 
-  getStats() {
+    // BUG IS HERE: Between the state check above and this update,
+    // another concurrent request might have also passed the check
+    // and both will proceed to acquire the lock!
+
+    // Mark as acquiring (intermediate state)
+    lock.state = "acquiring";
+
+    // Simulate lock acquisition work
+    await this.simulateAsyncDelay();
+
+    // Finalize acquisition
+    lock.owner = clientId;
+    lock.state = "acquired";
+    lock.acquiredAt = now;
+    lock.expiresAt = now + ttl;
+    lock.version++;
+
+    this.stats.totalAcquires++;
+    this.stats.currentHeld++;
+
+    console.log(`✓ Lock ${lockId} acquired by ${clientId} (expires in ${ttl}ms)`);
+
+    // Detect double-acquire bug (for monitoring)
+    this.detectDoubleAcquire(lockId);
+
     return {
-      totalUsers: this.users.size,
-      rooms: Array.from(this.rooms.entries()).map(([name, users]) => ({
-        name,
-        userCount: users.size,
-      })),
-      messageHandlers: this.messageHandlers.length,
+      success: true,
+      lock: { ...lock },
+    };
+  }
+
+  /**
+   * Renew an existing lock
+   */
+  async renew(lockId: string, clientId: string, ttl: number): Promise<{ success: boolean; lock?: Lock; error?: string }> {
+    const lock = this.locks.get(lockId);
+
+    if (!lock) {
+      return { success: false, error: "Lock does not exist" };
+    }
+
+    if (lock.owner !== clientId) {
+      return { success: false, error: `Lock is owned by ${lock.owner}` };
+    }
+
+    if (lock.state !== "acquired") {
+      return { success: false, error: `Lock is in state ${lock.state}` };
+    }
+
+    const now = Date.now();
+    lock.expiresAt = now + ttl;
+    lock.renewCount++;
+    lock.version++;
+
+    this.stats.totalRenewals++;
+
+    console.log(`↻ Lock ${lockId} renewed by ${clientId} (renew #${lock.renewCount})`);
+
+    return {
+      success: true,
+      lock: { ...lock },
+    };
+  }
+
+  /**
+   * Release a lock
+   */
+  async release(lockId: string, clientId: string): Promise<{ success: boolean; error?: string }> {
+    const lock = this.locks.get(lockId);
+
+    if (!lock) {
+      return { success: false, error: "Lock does not exist" };
+    }
+
+    if (lock.owner !== clientId) {
+      return { success: false, error: `Lock is owned by ${lock.owner}, not ${clientId}` };
+    }
+
+    lock.state = "releasing";
+
+    await this.simulateAsyncDelay();
+
+    lock.state = "available";
+    lock.owner = null;
+    lock.acquiredAt = null;
+    lock.expiresAt = null;
+    lock.renewCount = 0;
+    lock.version++;
+
+    this.stats.totalReleases++;
+    this.stats.currentHeld--;
+
+    console.log(`✗ Lock ${lockId} released by ${clientId}`);
+
+    return { success: true };
+  }
+
+  /**
+   * Get all locks
+   */
+  getLocks(): Lock[] {
+    return Array.from(this.locks.values()).map((lock) => ({ ...lock }));
+  }
+
+  /**
+   * Get lock by ID
+   */
+  getLock(lockId: string): Lock | null {
+    const lock = this.locks.get(lockId);
+    return lock ? { ...lock } : null;
+  }
+
+  /**
+   * Get statistics
+   */
+  getStats(): LockStats {
+    return { ...this.stats };
+  }
+
+  /**
+   * Clean up expired locks
+   */
+  private cleanupExpiredLocks(): void {
+    const now = Date.now();
+    let cleaned = 0;
+
+    for (const [lockId, lock] of this.locks.entries()) {
+      if (lock.expiresAt && now > lock.expiresAt && lock.state === "acquired") {
+        console.log(`⏰ Auto-releasing expired lock ${lockId} (was owned by ${lock.owner})`);
+        lock.state = "available";
+        lock.owner = null;
+        lock.acquiredAt = null;
+        lock.expiresAt = null;
+        lock.renewCount = 0;
+        this.stats.totalExpired++;
+        this.stats.currentHeld--;
+        cleaned++;
+      }
+    }
+
+    if (cleaned > 0) {
+      console.log(`Cleaned ${cleaned} expired locks`);
+    }
+  }
+
+  /**
+   * Detect double-acquire bug (for monitoring)
+   */
+  private detectDoubleAcquire(lockId: string): void {
+    // Slight delay to let any concurrent acquires complete
+    setTimeout(() => {
+      const lock = this.locks.get(lockId);
+      if (!lock) return;
+
+      // Count how many clients think they own this lock
+      // (In a real system this would check across multiple servers)
+      // For our simulation, we'll check if state transitions happened too quickly
+      if (lock.acquiredAt && lock.version > 1) {
+        const timeSinceAcquire = Date.now() - lock.acquiredAt;
+        if (timeSinceAcquire < 5) {
+          // Version incremented very quickly - possible race
+          console.warn(`⚠️  POSSIBLE DOUBLE-ACQUIRE on ${lockId}! Version jumped to ${lock.version} in ${timeSinceAcquire}ms`);
+          this.stats.doubleAcquireDetected++;
+        }
+      }
+    }, 10);
+  }
+
+  /**
+   * Simulate async delay (network, IO, etc.)
+   */
+  private async simulateAsyncDelay(): Promise<void> {
+    // Random delay between 1-5ms
+    const delay = Math.random() * 4 + 1;
+    await new Promise((resolve) => setTimeout(resolve, delay));
+  }
+
+  /**
+   * Reset all locks (for testing)
+   */
+  reset(): void {
+    this.locks.clear();
+    this.stats = {
+      totalAcquires: 0,
+      totalReleases: 0,
+      totalRenewals: 0,
+      totalExpired: 0,
+      totalRejected: 0,
+      currentHeld: 0,
+      doubleAcquireDetected: 0,
     };
   }
 }
 
-const chatServer = new ChatServer();
+const lockManager = new LockManager();
 
+// HTTP server
 async function handleRequest(req: Request): Promise<Response> {
   const url = new URL(req.url);
 
-  if (url.pathname.startsWith("/chat/")) {
-    return chatServer.handleConnection(req);
+  // POST /acquire - Acquire a lock
+  if (url.pathname === "/acquire" && req.method === "POST") {
+    const body = await req.json().catch(() => ({}));
+    const result = await lockManager.acquire({
+      lockId: body.lockId || "default-lock",
+      clientId: body.clientId || "anonymous",
+      ttl: body.ttl,
+    });
+    return Response.json(result);
   }
 
+  // POST /renew - Renew a lock
+  if (url.pathname === "/renew" && req.method === "POST") {
+    const body = await req.json().catch(() => ({}));
+    const result = await lockManager.renew(
+      body.lockId || "default-lock",
+      body.clientId || "anonymous",
+      body.ttl || 30000
+    );
+    return Response.json(result);
+  }
+
+  // POST /release - Release a lock
+  if (url.pathname === "/release" && req.method === "POST") {
+    const body = await req.json().catch(() => ({}));
+    const result = await lockManager.release(
+      body.lockId || "default-lock",
+      body.clientId || "anonymous"
+    );
+    return Response.json(result);
+  }
+
+  // GET /locks - Get all locks
+  if (url.pathname === "/locks") {
+    return Response.json(lockManager.getLocks());
+  }
+
+  // GET /locks/:id - Get specific lock
+  const lockMatch = url.pathname.match(/^\/locks\/(.+)$/);
+  if (lockMatch) {
+    const lock = lockManager.getLock(lockMatch[1]);
+    if (lock) {
+      return Response.json(lock);
+    }
+    return Response.json({ error: "Lock not found" }, { status: 404 });
+  }
+
+  // GET /stats - Get statistics
   if (url.pathname === "/stats") {
-    return Response.json(chatServer.getStats());
+    return Response.json(lockManager.getStats());
   }
 
+  // POST /reset - Reset all locks
+  if (url.pathname === "/reset" && req.method === "POST") {
+    lockManager.reset();
+    return Response.json({ message: "All locks reset" });
+  }
+
+  // GET /
   return new Response(
-    `WebSocket Chat Server
+    `Distributed Lock Manager
 
-Connect: ws://localhost:8081/chat/:username
-Stats:   http://localhost:8081/stats
+Endpoints:
+  POST /acquire   - Acquire a lock
+                    Body: {"lockId":"resource-1","clientId":"client-A","ttl":30000}
+  POST /renew     - Renew a lock
+                    Body: {"lockId":"resource-1","clientId":"client-A","ttl":30000}
+  POST /release   - Release a lock
+                    Body: {"lockId":"resource-1","clientId":"client-A"}
+  GET  /locks     - List all locks
+  GET  /locks/:id - Get specific lock
+  GET  /stats     - View statistics
+  POST /reset     - Reset all locks
 
-Example:
-  websocat ws://localhost:8081/chat/alice
+Debugging the Race Condition:
+  1. Set breakpoints in acquire() method:
+     - After "Check if lock is available" comment
+     - After "BUG IS HERE" comment
+     - Before "Finalize acquisition" comment
 
-Send message:
-  {"type":"message","room":"general","text":"Hello!"}
-  {"type":"message","to":"bob","text":"Private message"}
+  2. Watch these variables:
+     - lock.state
+     - lock.owner
+     - lock.version
+
+  3. Run concurrent requests:
+     for i in {1..100}; do
+       curl -X POST http://localhost:8081/acquire \\
+         -d '{"lockId":"resource-1","clientId":"client-'$i'"}' &
+     done
+
+  4. Step through breakpoints and observe:
+     - Multiple clients passing the "available" check
+     - Both updating the same lock object
+     - Race between check and update
+
+The bug is subtle and timing-dependent!
+Variable watches will show you the state corruption as it happens.
+
+Try:
+  curl -X POST http://localhost:8081/acquire -d '{"lockId":"resource-1","clientId":"client-A"}'
+  curl http://localhost:8081/locks
+  curl http://localhost:8081/stats
 `,
-    { headers: { "content-type": "text/plain" } },
+    { headers: { "content-type": "text/plain" } }
   );
 }
 
-console.log("💬 Chat server starting on http://localhost:8081");
-console.log("   Connect: ws://localhost:8081/chat/:username");
-console.log("   Stats:   http://localhost:8081/stats");
+console.log("🔒 Distributed Lock Manager starting on http://localhost:8081");
+console.log("   POST /acquire - Acquire lock");
+console.log("   POST /release - Release lock");
+console.log("   GET  /locks - View all locks");
+console.log("   GET  /stats - View statistics");
 console.log("");
-console.log("⚠️  BUG: After multiple reconnections:");
-console.log("    - Messages get duplicated");
-console.log("    - Memory grows steadily");
-console.log("    Try reconnecting the same user 3-4 times");
+console.log("⚠️  RACE CONDITION BUG:");
+console.log("   Under high concurrency, multiple clients can acquire same lock");
+console.log("   Happens ~1% of the time with 100+ concurrent requests");
+console.log("");
+console.log("🔍 Debug workflow:");
+console.log("   1. Set breakpoints in acquire() method");
+console.log("   2. Watch: lock.state, lock.owner, lock.version");
+console.log("   3. Run 100+ concurrent acquire requests");
+console.log("   4. Step through to see race condition");
+console.log("");
+console.log("Code reading won't easily reveal this!");
+console.log("You need breakpoints + variable watches to see the timing issue.");
 
 Deno.serve({ port: 8081 }, handleRequest);
