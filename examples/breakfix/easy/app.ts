@@ -47,8 +47,11 @@ class ResponseCache {
   }
 
   invalidate(pattern: string): void {
+    // BUG: Only invalidates exact matches or base keys, not keys with query params
     for (const key of this.cache.keys()) {
-      if (key.includes(pattern)) {
+      // Only delete if exact match or if it ends with just a dash (no query params)
+      const afterPattern = key.substring(pattern.length);
+      if (key.startsWith(pattern) && (afterPattern === "" || afterPattern === "-")) {
         this.cache.delete(key);
       }
     }
