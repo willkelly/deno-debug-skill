@@ -38,7 +38,7 @@ async function testRaceDebugging() {
 
   const analysis = analyzeForRace(
     results,
-    (r) => r.body?.success === true,
+    (r) => (r.body as { success?: boolean })?.success === true,
     1, // Only 1 should succeed for a lock
   );
 
@@ -89,7 +89,7 @@ async function testRaceDebugging() {
   console.log("\n\nTest 3: Analyzing race pattern from results");
   console.log("─".repeat(60));
 
-  const winners = results.filter((r) => r.body?.success === true);
+  const winners = results.filter((r) => (r.body as { success?: boolean })?.success === true);
 
   if (winners.length > 1) {
     console.log("\n🔍 Race Condition Confirmed!\n");
@@ -100,7 +100,7 @@ async function testRaceDebugging() {
       console.log(`    Start time: ${winner.startTime}`);
       console.log(`    End time:   ${winner.endTime}`);
       console.log(`    Duration:   ${winner.duration}ms`);
-      console.log(`    Lock data:  ${JSON.stringify(winner.body?.lock)}`);
+      console.log(`    Lock data:  ${JSON.stringify((winner.body as { lock?: unknown })?.lock)}`);
     }
 
     // Calculate timing overlap

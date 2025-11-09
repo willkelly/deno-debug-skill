@@ -7,6 +7,7 @@ import { CDPClient } from "../deno-debugger/scripts/cdp_client.ts";
 import {
   analyzeComplexity,
   analyzeProfile,
+  CPUProfile,
   printComplexityAnalysis,
   saveFlamegraphHTML,
 } from "../deno-debugger/scripts/cpu_profiler.ts";
@@ -58,7 +59,8 @@ async function testCPUProfiling() {
   }
 
   console.log("\nStopping profiler and collecting data...");
-  const profile = await client.stopProfiling();
+  const profileData = await client.stopProfiling();
+  const profile = new CPUProfile(profileData);
   console.log("✓ Profile collected");
 
   // Analyze profile

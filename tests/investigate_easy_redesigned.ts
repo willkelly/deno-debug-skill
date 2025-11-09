@@ -173,8 +173,8 @@ async function investigate() {
       "service consumes 800MB (started at 80MB).",
   );
 
-  report.addEvidence(
-    "Heap Snapshots",
+  report.addSection(
+    "Evidence: Heap Snapshots",
     `
 Baseline: ${baselineSize.toFixed(2)} MB
 After 25 reloads: ${afterSize.toFixed(2)} MB
@@ -191,8 +191,8 @@ ${
 `,
   );
 
-  report.addEvidence(
-    "Code Analysis",
+  report.addSection(
+    "Evidence: Code Analysis",
     `
 Subscribe calls: ${subscribeLines.length}
 Unsubscribe calls: ${unsubscribeLines.length}
@@ -200,10 +200,9 @@ Shutdown methods missing cleanup: ${missingCleanupCount}/${shutdowns.length}
 `,
   );
 
-  report.addRootCause(`
-**Event Handler Leak in Plugin Lifecycle**
-
-Each plugin class (ConversionPlugin, ErrorPlugin, PageviewPlugin, ClickPlugin, CustomEventPlugin)
+  report.addRootCause(
+    "Event Handler Leak in Plugin Lifecycle",
+    `Each plugin class (ConversionPlugin, ErrorPlugin, PageviewPlugin, ClickPlugin, CustomEventPlugin)
 calls \`this.eventBus.subscribe()\` in its \`initialize()\` method to register event handlers.
 
 However, the \`shutdown()\` methods clear local state but FORGET to call
@@ -215,13 +214,11 @@ When plugins are reloaded:
 3. EventBus now has both old AND new handlers for each event type
 4. After N reloads, EventBus has N × 5 handlers (5 plugins)
 
-The handlers array grows indefinitely, causing memory leak.
-`);
+The handlers array grows indefinitely, causing memory leak.`,
+  );
 
-  report.addRecommendation(
-    "Fix Plugin Shutdown Methods",
-    `
-Add \`unsubscribe()\` calls to each plugin's \`shutdown()\` method:
+  report.addFix(
+    `Add \`unsubscribe()\` calls to each plugin's \`shutdown()\` method:
 
 \`\`\`typescript
 shutdown(): void {
@@ -234,8 +231,7 @@ shutdown(): void {
 }
 \`\`\`
 
-Apply this fix to all 5 plugin classes.
-`,
+Apply this fix to all 5 plugin classes.`,
   );
 
   await report.save("investigation_output/easy/REPORT.md");
