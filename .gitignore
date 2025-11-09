@@ -1,13 +1,5 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-env/
-venv/
-.venv/
-*.egg-info/
+# Dependencies (kept for backwards compatibility if needed)
+node_modules/
 dist/
 build/
 
@@ -20,6 +12,11 @@ investigation_*.org
 investigation_*.json
 breadcrumbs_*.json
 investigation_output/
+
+# Test outputs
+tests/output/
+*_flamegraph.html
+flamegraph.html
 
 # Scenario outputs (from examples/scenarios/*/run.sh)
 examples/scenarios/*/output/

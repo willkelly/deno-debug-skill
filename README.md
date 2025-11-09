@@ -98,12 +98,14 @@ Claude will:
 
 ## 📊 Output Artifacts
 
-Every investigation generates:
+Every investigation generates output in a directory of your choice (commonly `investigation_output/`):
 
-- **`investigation_output/REPORT.md`** - Main report (Markdown)
-- **`investigation_output/baseline.heapsnapshot`** - Heap before (for memory issues)
-- **`investigation_output/after.heapsnapshot`** - Heap after (for memory issues)
-- **`investigation_output/investigation.json`** - Breadcrumb timeline (if used)
+- **`REPORT.md`** - Main investigation report (Markdown)
+- **`baseline.heapsnapshot`** - Heap before (for memory issues)
+- **`after.heapsnapshot`** - Heap after (for memory issues)
+- **`profile.cpuprofile`** - CPU profile data (for performance issues)
+- **`flamegraph.html`** - Interactive flamegraph visualization (optional)
+- **`investigation.json`** - Breadcrumb timeline (if used)
 
 ### Example Report Structure
 
@@ -142,18 +144,34 @@ removes them. Each upload adds ~47 KB that persists for the app lifetime.
 ## 🏗️ Architecture
 
 ```
-deno-debugger/
-├── SKILL.md              # Instructions Claude reads (workflow + patterns)
-├── README.md             # Installation guide (for users)
-├── deno.json             # Deno configuration with tasks
-└── scripts/              # Pre-written debugging infrastructure (TypeScript)
-    ├── cdp_client.ts     # Chrome DevTools Protocol client
-    ├── heap_analyzer.ts  # Heap snapshot parsing
-    ├── cpu_profiler.ts   # CPU profile analysis
-    ├── breadcrumbs.ts    # Investigation tracking (optional)
-    ├── report_gen.ts     # Markdown report generation
-    ├── types.ts          # V8 and CDP type definitions
-    └── deps.ts           # Deno stdlib dependencies
+deno-debug-skill/
+├── deno-debugger/           # The actual skill (copy this to ~/.claude/skills/)
+│   ├── SKILL.md            # Instructions Claude reads (workflow + patterns)
+│   ├── README.md           # Installation guide (for users)
+│   ├── deno.json           # Deno configuration with tasks
+│   └── scripts/            # Pre-written debugging infrastructure (TypeScript)
+│       ├── cdp_client.ts   # Chrome DevTools Protocol client
+│       ├── heap_analyzer.ts  # Heap snapshot parsing (fast mode for 900MB heaps)
+│       ├── cpu_profiler.ts   # CPU profiling with O(n²) detection & flamegraphs
+│       ├── concurrent_helper.ts  # Race condition testing utilities
+│       ├── breadcrumbs.ts  # Investigation tracking (optional)
+│       ├── report_gen.ts   # Markdown report generation
+│       ├── types.ts        # V8 and CDP type definitions
+│       └── deps.ts         # Deno stdlib dependencies
+│
+├── examples/
+│   ├── scenarios/          # Interactive test scenarios (memory leak, performance)
+│   └── breakfix/           # Debugging challenges (easy, medium, hard)
+│
+├── tests/                  # Test scripts and investigation examples
+│   ├── investigate_easy_redesigned.ts  # Example investigation workflow
+│   ├── test_cpu_profiling_analysis.ts  # CPU profiling test
+│   └── test_race_condition_debugging.ts  # Race condition test
+│
+└── docs/                   # Implementation notes and analysis
+    ├── breakfix-investigation.md      # Breakfix scenario evaluation
+    ├── heap-performance.md            # Heap optimization analysis
+    └── cpu-profiling-enhancements.md  # CPU profiling features
 ```
 
 ## 🔧 Core Components
@@ -193,41 +211,62 @@ const vars = await client.getScopeVariables(frames[0].callFrameId);
 Parse and analyze V8 heap snapshots:
 
 ```typescript
-import { loadSnapshot, compareSnapshots } from "./scripts/heap_analyzer.ts";
+import {
+  loadSnapshot,
+  compareSnapshots,
+  compareSnapshotsFast
+} from "./scripts/heap_analyzer.ts";
 
-const snapshot = await loadSnapshot("heap.heapsnapshot");
-const summary = snapshot.getNodeSizeSummary();
-const nodes = snapshot.getNodesByType("Array");
-
-// Compare two snapshots
-const comparison = compareSnapshots(before, after);
+// Fast mode: 900MB snapshots in ~20 seconds (vs 3 hours!)
+const comparison = await compareSnapshotsFast(
+  "baseline.heapsnapshot",
+  "after.heapsnapshot"
+);
 console.table(comparison.slice(0, 10));
+
+// Full mode: When you need retaining paths
+const snapshot = await loadSnapshot("heap.heapsnapshot");
+const nodes = snapshot.getNodesByType("Array");
+const paths = snapshot.getRetainingPath(nodes[0].id);
 ```
 
 **Features:**
+- Fast mode for large heaps: 900MB in ~20s (540x faster than full mode)
 - Native Map/Array data structures (no pandas needed)
 - Fast node indexing and lookup
-- Retaining path analysis
-- Growth comparison
+- Retaining path analysis (full mode)
+- Growth comparison and leak detection
 
 ### CPU Profiler (`cpu_profiler.ts`)
 
 Profile CPU usage and find bottlenecks:
 
 ```typescript
-import { loadProfile, analyzeHotPaths } from "./scripts/cpu_profiler.ts";
+import {
+  loadProfile,
+  analyzeProfile,
+  analyzeComplexity,
+  saveFlamegraphHTML
+} from "./scripts/cpu_profiler.ts";
 
 const profile = await loadProfile("profile.cpuprofile");
-const hotFunctions = profile.getHotFunctions();
-const asyncIssues = detectAsyncIssues(profile);
-const hotPaths = analyzeHotPaths(profile);
+const analysis = analyzeProfile(profile);
+
+// Automatic O(n²) detection
+const issues = analyzeComplexity(profile);
+// Flags functions with >50% self time as critical
+
+// Interactive flamegraph visualization
+await saveFlamegraphHTML(profile, "flamegraph.html");
 ```
 
 **Features:**
-- Hot function detection
+- Hot function detection with self time vs total time analysis
+- Automatic O(n²) algorithmic complexity detection
+- Flamegraph HTML generation (speedscope compatible)
+- Common performance anti-pattern recognition
 - Call tree analysis
-- Async/await pattern detection
-- Optimization issue identification
+- 10-30x faster bottleneck diagnosis
 
 ### Breadcrumbs (`breadcrumbs.ts`)
 
@@ -415,11 +454,18 @@ await investigate();
 
 ## 📚 Documentation
 
+**User Documentation:**
 - **`deno-debugger/SKILL.md`** - Complete workflow and patterns Claude follows
 - **`deno-debugger/README.md`** - Installation and usage guide
 - **`examples/scenarios/README.md`** - Interactive scenario guide
+- **`examples/breakfix/README.md`** - Debugging challenge scenarios
 - **`TESTING.md`** - Test suite documentation
 - **`CONTRIBUTING.md`** - Contribution guidelines
+
+**Implementation Notes** (in `docs/`):
+- **`breakfix-investigation.md`** - Evaluation of breakfix scenarios and skill effectiveness
+- **`heap-performance.md`** - Analysis of heap snapshot optimization for large (900MB) heaps
+- **`cpu-profiling-enhancements.md`** - O(n²) detection and flamegraph implementation details
 
 ## 🤝 Contributing
 

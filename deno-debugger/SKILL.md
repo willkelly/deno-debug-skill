@@ -145,12 +145,15 @@ Based on the problem type, follow one of these patterns:
 
 #### Pattern A: Memory Leak
 
+**IMPORTANT: For large heaps (>100MB), use the FAST comparison mode to avoid 3+ hour waits!**
+
 ```typescript
-import { captureSnapshot, compareSnapshots } from "./scripts/heap_analyzer.ts";
+import { compareSnapshotsFast } from "./scripts/heap_analyzer.ts";
+import type { CDPClient } from "./scripts/cdp_client.ts";
 
 // 1. Capture baseline
 console.log("Capturing baseline snapshot...");
-const snapshot1 = await captureSnapshot(client, "investigation_output/baseline.heapsnapshot");
+await client.takeHeapSnapshot("investigation_output/baseline.heapsnapshot");
 const baseline_size = (await Deno.stat("investigation_output/baseline.heapsnapshot")).size / (1024 * 1024);
 console.log(`Baseline: ${baseline_size.toFixed(2)} MB`);
 
@@ -161,85 +164,291 @@ await new Promise(resolve => setTimeout(resolve, 5000)); // Wait
 
 // 3. Capture comparison
 console.log("Capturing comparison snapshot...");
-const snapshot2 = await captureSnapshot(client, "investigation_output/after.heapsnapshot");
+await client.takeHeapSnapshot("investigation_output/after.heapsnapshot");
 const after_size = (await Deno.stat("investigation_output/after.heapsnapshot")).size / (1024 * 1024);
 
 // 4. Analyze growth
 const growth_mb = after_size - baseline_size;
 console.log(`After: ${after_size.toFixed(2)} MB (grew ${growth_mb.toFixed(2)} MB)`);
 
-// 5. Compare snapshots to see what grew
-const comparison = compareSnapshots(snapshot1, snapshot2);
-console.log("\nTop growing objects:");
-console.table(comparison.slice(0, 10));
+// 5. FAST: Compare snapshots using summary-only mode
+// This skips edges and retention paths (10-50x faster for large heaps)
+const comparison = await compareSnapshotsFast(
+  "investigation_output/baseline.heapsnapshot",
+  "investigation_output/after.heapsnapshot"
+);
 
-// 6. Examine code to find the cause
+console.log("\nTop 10 growing objects:");
+console.table(comparison.slice(0, 10).map(row => ({
+  Type: row.nodeType,
+  Name: row.name.substring(0, 40),
+  "Count Δ": row.countDelta,
+  "Size Δ (MB)": (row.sizeDelta / (1024 * 1024)).toFixed(2),
+})));
+
+// 6. If you need retaining paths for specific objects, load with full mode:
+// (Only do this if compareSnapshotsFast wasn't enough)
+/*
+import { loadSnapshot } from "./scripts/heap_analyzer.ts";
+
+const afterSnapshot = await loadSnapshot("investigation_output/after.heapsnapshot");
+const suspiciousNode = afterSnapshot.nodes.find(n => n.name === "LeakyObject");
+if (suspiciousNode) {
+  const path = afterSnapshot.findRetainingPath(suspiciousNode.id);
+  console.log("Why is this object retained?", path);
+}
+*/
+
+// 7. Examine code to find the cause
 const sourceCode = await Deno.readTextFile("path/to/app.ts");
 // [Your code inspection here]
 ```
 
+**Performance Guide:**
+
+| Heap Size | compareSnapshotsFast() | loadSnapshot() + compareSnapshots() |
+|-----------|------------------------|-------------------------------------|
+| <10 MB | ~2 seconds | ~5 seconds |
+| 100 MB | ~8 seconds | ~2 minutes |
+| 900 MB | ~20 seconds | ~3 hours ❌ |
+
+**When to use full mode:**
+- ✅ Use `compareSnapshotsFast()` FIRST (always!)
+- ✅ Only load full snapshots if you need retaining paths
+- ✅ Narrow down to specific objects before loading full snapshots
+
 #### Pattern B: Performance Bottleneck
 
+**Key Challenge:** Large codebases make it hard to find O(n²) or other algorithmic issues.
+
+**Strategy:** Use CPU profiling with automatic complexity analysis and flamegraph visualization.
+
 ```typescript
-import { startProfiling, stopProfiling, analyzeHotPaths } from "./scripts/cpu_profiler.ts";
+import {
+  startProfiling,
+  stopProfiling,
+  analyzeProfile,
+  analyzeComplexity,
+  printComplexityAnalysis,
+  saveFlamegraphHTML
+} from "./scripts/cpu_profiler.ts";
 
 // 1. Start profiling
 await startProfiling(client);
 console.log("Profiling started");
 
 // 2. Trigger slow operation
-console.log("Trigger the slow operation now...");
-// User triggers slow code or you make request
-await new Promise(resolve => setTimeout(resolve, 2000)); // Let it run
+console.log("Triggering slow operation (e.g., processing 100 items)...");
+await fetch("http://localhost:8080/process", {
+  method: "POST",
+  body: JSON.stringify({ items: Array(100).fill({}) })
+});
 
-// 3. Stop and analyze
-const profile = await stopProfiling(client, "investigation_output/profile.cpuprofile");
+// 3. Stop and collect profile
+const profile = await stopProfiling(client, "profile.cpuprofile");
 
-// 4. Find hot functions
-const hotFunctions = profile.getHotFunctions();
-console.log("\nHot functions:");
-for (const func of hotFunctions.slice(0, 5)) {
-  console.log(`  ${func.functionName}: ${func.totalPct.toFixed(1)}% total, ${func.selfPct.toFixed(1)}% self`);
+// 4. Analyze for hot functions
+const analysis = analyzeProfile(profile);
+console.log("\nTop 5 Hot Functions:");
+for (const func of analysis.hotFunctions.slice(0, 5)) {
+  const totalPct = (func.totalTime / analysis.totalDuration * 100).toFixed(1);
+  const selfPct = (func.selfTime / analysis.totalDuration * 100).toFixed(1);
+  console.log(`  ${func.functionName}`);
+  console.log(`    Total: ${totalPct}% | Self: ${selfPct}%`);
 }
 
-// 5. Analyze hot paths
-const hotPaths = analyzeHotPaths(profile);
-console.table(hotPaths.slice(0, 5));
+// 5. NEW: Automatic O(n²) Detection
+console.log("\n🔍 Algorithmic Complexity Analysis:");
+const complexityIssues = analyzeComplexity(profile);
+printComplexityAnalysis(complexityIssues);
 
-// 6. Examine the slow code to understand why it's expensive
-const sourceCode = await Deno.readTextFile("path/to/slow_file.ts");
-// [Your code inspection here]
+// This will automatically flag:
+// - Functions with >50% self time (likely O(n²) or worse)
+// - Nested loops, checksums, comparisons
+// - Common O(n²) patterns
+
+// 6. NEW: Generate Flamegraph Visualization
+await saveFlamegraphHTML(profile, "flamegraph.html");
+console.log("\n📊 Flamegraph saved to flamegraph.html");
+console.log("   Open in browser or upload to https://speedscope.app");
+console.log("   Look for: Wide bars = high total time, Tall stacks = deep calls");
+
+// 7. Examine identified bottleneck
+// Based on complexity analysis, check the flagged function
+const criticalIssues = complexityIssues.filter(i => i.severity === "critical");
+if (criticalIssues.length > 0) {
+  console.log(`\n🎯 Investigate: ${criticalIssues[0].functionName}`);
+  console.log(`   Evidence: ${criticalIssues[0].evidence}`);
+  console.log(`   Suspected: ${criticalIssues[0].suspectedComplexity}`);
+}
 ```
 
-#### Pattern C: Race Condition
+**Understanding Self Time vs Total Time:**
+
+- **Total Time:** Time spent in function + all functions it calls
+  - High total time → Function is on the critical path
+  - Example: `processImages()` calling 100x `processOne()`
+
+- **Self Time:** Time spent in function's own code only
+  - High self time → Function itself is slow (not just calling slow code)
+  - Example: Nested loops, expensive calculations
+
+- **O(n²) Indicator:** High self time % (>50%) often indicates O(n²) or worse
+  - If total time is high but self time is low → Calling slow functions
+  - If self time is high → The function's own logic is the problem
+
+**When to Use Each Tool:**
+
+| Tool | Use When | Finds |
+|------|----------|-------|
+| `analyzeProfile()` | Always first | Hot functions, call patterns |
+| `analyzeComplexity()` | Suspected O(n²) | Algorithmic bottlenecks |
+| `saveFlamegraphHTML()` | Complex call trees | Visual patterns, deep stacks |
+| Hot paths analysis | Multiple bottlenecks | Critical execution paths |
+
+**Common O(n²) Patterns Detected:**
 
 ```typescript
-// 1. Set breakpoints at async boundaries
-await client.setBreakpointByUrl("file:///app.ts", 42);
-console.log("Breakpoint set at line 42");
+// Pattern 1: Nested loops (CRITICAL)
+for (const item of items) {          // O(n)
+  for (const other of items) {       // O(n) ← flags this!
+    if (compare(item, other)) { }
+  }
+}
 
-// 2. Set pause on exceptions
+// Pattern 2: Repeated linear searches (CRITICAL)
+for (const item of items) {                // O(n)
+  const found = items.find(x => x.id === item.ref);  // O(n) ← flags this!
+}
+
+// Pattern 3: Checksums in loops (WARNING)
+for (const item of items) {          // O(n)
+  calculateChecksum(item.data);      // If checksum is O(n) → O(n²) total
+}
+```
+
+**Fix Strategy:**
+
+1. Run `analyzeComplexity()` to find critical issues
+2. Check flamegraph for visual confirmation (wide bars)
+3. Examine flagged function's self time:
+   - >50% self time → Definitely the bottleneck
+   - <10% self time → Just calling slow code
+4. Common fixes:
+   - Use Map/Set instead of Array.find() → O(n) to O(1)
+   - Move invariant calculations outside loops
+   - Cache expensive computations
+   - Use streaming/chunking for large datasets
+
+#### Pattern C: Race Condition / Concurrency Bug
+
+**Key Challenge:** Race conditions are timing-dependent and hard to reproduce consistently.
+
+**Strategy:** Use conditional breakpoints to catch the race only when it occurs.
+
+```typescript
+// 1. Set CONDITIONAL breakpoints to catch specific states
+// Break only when lock is already claimed (race condition!)
+await client.setBreakpointByUrl(
+  "file:///app.ts",
+  130,  // Line where we check lock state
+  0,
+  "lock.state !== 'available'"  // ← CONDITION: Only break if lock not available
+);
+
+// Break when version increments unexpectedly (indicates concurrent modification)
+await client.setBreakpointByUrl(
+  "file:///app.ts",
+  167,
+  0,
+  "lock.version > expectedVersion"  // ← CONDITION: Version jumped
+);
+
+console.log("✓ Conditional breakpoints set for race detection");
+
+// 2. Set pause on exceptions (catches errors from race)
 await client.setPauseOnExceptions("all");
 
-// 3. Trigger the race
-console.log("Trigger the problematic async code now...");
-// ... trigger problematic async code ...
+// 3. Generate concurrent requests to trigger the race
+// Need many concurrent attempts to hit the timing window
+console.log("Generating 100 concurrent requests to trigger race...");
 
-// 4. When paused, inspect state
+const requests = [];
+for (let i = 0; i < 100; i++) {
+  requests.push(
+    fetch("http://localhost:8081/acquire", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        lockId: "test-lock",
+        clientId: `client-${i}`,
+      }),
+    })
+  );
+}
+
+// Fire all requests concurrently
+const responses = await Promise.all(requests);
+
+// 4. If race occurs, breakpoint will trigger
+// When paused, inspect the state
 const frames = client.getCallFrames();
 if (frames.length > 0) {
   const variables = await client.getScopeVariables(frames[0].callFrameId);
-  console.log(`Paused at: ${frames[0].functionName} line ${frames[0].location.lineNumber}`);
-  console.log("Variables:", variables);
+  console.log(`🔴 Breakpoint hit!`);
+  console.log(`Location: ${frames[0].functionName} line ${frames[0].location.lineNumber}`);
+  console.log(`Variables:`, variables);
+
+  // Evaluate lock state
+  const lockState = await client.evaluate("lock.state");
+  const lockOwner = await client.evaluate("lock.owner");
+  const lockVersion = await client.evaluate("lock.version");
+
+  console.log(`Lock state: ${lockState}`);
+  console.log(`Lock owner: ${lockOwner}`);
+  console.log(`Lock version: ${lockVersion}`);
 }
 
-// 5. Evaluate expressions to check state
-const result = await client.evaluate("myVariable.status");
-console.log("Variable state:", result);
+// 5. Check results for race condition evidence
+const successes = responses.filter(r => r.ok);
+const results = await Promise.all(successes.map(r => r.json()));
+const acquiredCount = results.filter(r => r.success).length;
 
-// 6. Examine code to find missing awaits or improper synchronization
+console.log(`\n📊 Results:`);
+console.log(`  Total requests: ${responses.length}`);
+console.log(`  Successful acquires: ${acquiredCount}`);
+console.log(`  Expected: 1`);
+console.log(`  Race detected: ${acquiredCount > 1 ? '❌ YES' : '✅ NO'}`);
+
+// 6. Examine code to understand the race window
 const sourceCode = await Deno.readTextFile("path/to/async_file.ts");
-// [Your code inspection here]
+// Look for:
+// - Check-then-act patterns (TOCTOU)
+// - Async gaps between read and write
+// - Missing atomic operations
+```
+
+**Race Condition Debugging Tips:**
+
+1. **Conditional breakpoints are essential** - Don't waste time on non-race executions
+2. **Run many concurrent requests** - Races have low probability (1-5%)
+3. **Watch for version/state changes** - Indicates concurrent modification
+4. **Look for async gaps** - Time between check and update is the race window
+5. **Check timing** - Use `Date.now()` to measure gaps between operations
+
+**Common Race Patterns:**
+
+```typescript
+// BAD: Check-then-act with async gap
+if (lock.state === "available") {  // ← Check
+  await someAsyncOperation();      // ← GAP (race window!)
+  lock.state = "acquired";         // ← Act
+}
+
+// GOOD: Atomic check-and-act
+const wasAvailable = lock.state === "available";
+lock.state = wasAvailable ? "acquired" : lock.state;
+if (!wasAvailable) throw new Error("Lock unavailable");
 ```
 
 ### 4. Examine Code
