@@ -219,36 +219,126 @@ const sourceCode = await Deno.readTextFile("path/to/app.ts");
 
 #### Pattern B: Performance Bottleneck
 
+**Key Challenge:** Large codebases make it hard to find O(n²) or other algorithmic issues.
+
+**Strategy:** Use CPU profiling with automatic complexity analysis and flamegraph visualization.
+
 ```typescript
-import { startProfiling, stopProfiling, analyzeHotPaths } from "./scripts/cpu_profiler.ts";
+import {
+  startProfiling,
+  stopProfiling,
+  analyzeProfile,
+  analyzeComplexity,
+  printComplexityAnalysis,
+  saveFlamegraphHTML
+} from "./scripts/cpu_profiler.ts";
 
 // 1. Start profiling
 await startProfiling(client);
 console.log("Profiling started");
 
 // 2. Trigger slow operation
-console.log("Trigger the slow operation now...");
-// User triggers slow code or you make request
-await new Promise(resolve => setTimeout(resolve, 2000)); // Let it run
+console.log("Triggering slow operation (e.g., processing 100 items)...");
+await fetch("http://localhost:8080/process", {
+  method: "POST",
+  body: JSON.stringify({ items: Array(100).fill({}) })
+});
 
-// 3. Stop and analyze
-const profile = await stopProfiling(client, "investigation_output/profile.cpuprofile");
+// 3. Stop and collect profile
+const profile = await stopProfiling(client, "profile.cpuprofile");
 
-// 4. Find hot functions
-const hotFunctions = profile.getHotFunctions();
-console.log("\nHot functions:");
-for (const func of hotFunctions.slice(0, 5)) {
-  console.log(`  ${func.functionName}: ${func.totalPct.toFixed(1)}% total, ${func.selfPct.toFixed(1)}% self`);
+// 4. Analyze for hot functions
+const analysis = analyzeProfile(profile);
+console.log("\nTop 5 Hot Functions:");
+for (const func of analysis.hotFunctions.slice(0, 5)) {
+  const totalPct = (func.totalTime / analysis.totalDuration * 100).toFixed(1);
+  const selfPct = (func.selfTime / analysis.totalDuration * 100).toFixed(1);
+  console.log(`  ${func.functionName}`);
+  console.log(`    Total: ${totalPct}% | Self: ${selfPct}%`);
 }
 
-// 5. Analyze hot paths
-const hotPaths = analyzeHotPaths(profile);
-console.table(hotPaths.slice(0, 5));
+// 5. NEW: Automatic O(n²) Detection
+console.log("\n🔍 Algorithmic Complexity Analysis:");
+const complexityIssues = analyzeComplexity(profile);
+printComplexityAnalysis(complexityIssues);
 
-// 6. Examine the slow code to understand why it's expensive
-const sourceCode = await Deno.readTextFile("path/to/slow_file.ts");
-// [Your code inspection here]
+// This will automatically flag:
+// - Functions with >50% self time (likely O(n²) or worse)
+// - Nested loops, checksums, comparisons
+// - Common O(n²) patterns
+
+// 6. NEW: Generate Flamegraph Visualization
+await saveFlamegraphHTML(profile, "flamegraph.html");
+console.log("\n📊 Flamegraph saved to flamegraph.html");
+console.log("   Open in browser or upload to https://speedscope.app");
+console.log("   Look for: Wide bars = high total time, Tall stacks = deep calls");
+
+// 7. Examine identified bottleneck
+// Based on complexity analysis, check the flagged function
+const criticalIssues = complexityIssues.filter(i => i.severity === "critical");
+if (criticalIssues.length > 0) {
+  console.log(`\n🎯 Investigate: ${criticalIssues[0].functionName}`);
+  console.log(`   Evidence: ${criticalIssues[0].evidence}`);
+  console.log(`   Suspected: ${criticalIssues[0].suspectedComplexity}`);
+}
 ```
+
+**Understanding Self Time vs Total Time:**
+
+- **Total Time:** Time spent in function + all functions it calls
+  - High total time → Function is on the critical path
+  - Example: `processImages()` calling 100x `processOne()`
+
+- **Self Time:** Time spent in function's own code only
+  - High self time → Function itself is slow (not just calling slow code)
+  - Example: Nested loops, expensive calculations
+
+- **O(n²) Indicator:** High self time % (>50%) often indicates O(n²) or worse
+  - If total time is high but self time is low → Calling slow functions
+  - If self time is high → The function's own logic is the problem
+
+**When to Use Each Tool:**
+
+| Tool | Use When | Finds |
+|------|----------|-------|
+| `analyzeProfile()` | Always first | Hot functions, call patterns |
+| `analyzeComplexity()` | Suspected O(n²) | Algorithmic bottlenecks |
+| `saveFlamegraphHTML()` | Complex call trees | Visual patterns, deep stacks |
+| Hot paths analysis | Multiple bottlenecks | Critical execution paths |
+
+**Common O(n²) Patterns Detected:**
+
+```typescript
+// Pattern 1: Nested loops (CRITICAL)
+for (const item of items) {          // O(n)
+  for (const other of items) {       // O(n) ← flags this!
+    if (compare(item, other)) { }
+  }
+}
+
+// Pattern 2: Repeated linear searches (CRITICAL)
+for (const item of items) {                // O(n)
+  const found = items.find(x => x.id === item.ref);  // O(n) ← flags this!
+}
+
+// Pattern 3: Checksums in loops (WARNING)
+for (const item of items) {          // O(n)
+  calculateChecksum(item.data);      // If checksum is O(n) → O(n²) total
+}
+```
+
+**Fix Strategy:**
+
+1. Run `analyzeComplexity()` to find critical issues
+2. Check flamegraph for visual confirmation (wide bars)
+3. Examine flagged function's self time:
+   - >50% self time → Definitely the bottleneck
+   - <10% self time → Just calling slow code
+4. Common fixes:
+   - Use Map/Set instead of Array.find() → O(n) to O(1)
+   - Move invariant calculations outside loops
+   - Cache expensive computations
+   - Use streaming/chunking for large datasets
 
 #### Pattern C: Race Condition / Concurrency Bug
 

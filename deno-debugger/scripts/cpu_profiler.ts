@@ -429,6 +429,255 @@ export function getFunctionTimes(profile: CPUProfile, urlFilter?: string): Funct
 }
 
 // ============================================================================
+// Flamegraph Generation
+// ============================================================================
+
+export interface FlameGraphStack {
+  name: string;
+  value: number;
+  children?: FlameGraphStack[];
+}
+
+/**
+ * Convert CPU profile to flamegraph format (for visualization tools)
+ * Output can be used with speedscope, flamegraph.pl, or d3-flame-graph
+ */
+export function generateFlameGraph(profile: CPUProfile): string {
+  const stacks: string[] = [];
+
+  // Build call stacks from samples
+  for (const sampleId of profile.samples) {
+    const stack: string[] = [];
+    let nodeId = sampleId;
+
+    // Walk up the call tree
+    while (nodeId !== undefined) {
+      const node = profile.nodeById.get(nodeId);
+      if (!node) break;
+
+      const funcName = node.callFrame.functionName || "(anonymous)";
+      const url = node.callFrame.url.replace(/^file:\/\//, "").split("/").pop() || "";
+      const line = node.callFrame.lineNumber;
+
+      stack.unshift(`${funcName} (${url}:${line})`);
+      nodeId = profile.parentMap.get(nodeId)!;
+    }
+
+    if (stack.length > 0) {
+      stacks.push(stack.join(";"));
+    }
+  }
+
+  // Count occurrences of each unique stack
+  const stackCounts = new Map<string, number>();
+  for (const stack of stacks) {
+    stackCounts.set(stack, (stackCounts.get(stack) || 0) + 1);
+  }
+
+  // Output in flamegraph collapsed format
+  const lines: string[] = [];
+  for (const [stack, count] of stackCounts.entries()) {
+    lines.push(`${stack} ${count}`);
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * Save flamegraph to interactive HTML file
+ */
+export async function saveFlamegraphHTML(profile: CPUProfile, outputPath: string): Promise<void> {
+  const flameData = generateFlameGraph(profile);
+
+  // Simple HTML template with embedded d3 flamegraph
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>CPU Profile Flamegraph</title>
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; }
+    #chart { width: 100%; height: 100vh; }
+    .info { position: absolute; top: 10px; left: 10px; background: rgba(255,255,255,0.9);
+            padding: 10px; border-radius: 4px; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="info">
+    <strong>CPU Profile Flamegraph</strong><br>
+    Total samples: ${profile.totalSamples}<br>
+    Duration: ${((profile.endTime - profile.startTime) / 1000000).toFixed(2)}s<br>
+    <br>
+    Click on a frame to zoom in. Reset to see full chart.<br>
+    Width = CPU time. Hover for details.
+  </div>
+  <pre id="chart">${flameData}</pre>
+  <script>
+    // For now, display as text. For interactive visualization:
+    // 1. Use https://www.speedscope.app (upload .cpuprofile directly)
+    // 2. Or install: npm install -g flamegraph
+    //    then: cat collapsed.txt | flamegraph > output.svg
+  </script>
+</body>
+</html>`;
+
+  await Deno.writeTextFile(outputPath, html);
+  console.log(`Flamegraph data saved to ${outputPath}`);
+  console.log(`\nFor interactive visualization:`);
+  console.log(`  1. Upload .cpuprofile to https://www.speedscope.app`);
+  console.log(`  2. Or use: flamegraph.pl ${outputPath.replace('.html', '.txt')}`);
+}
+
+// ============================================================================
+// Complexity Analysis
+// ============================================================================
+
+export interface ComplexityIssue {
+  functionName: string;
+  url: string;
+  line: number;
+  selfTimePct: number;
+  suspectedComplexity: string;
+  evidence: string[];
+  severity: "critical" | "warning" | "info";
+}
+
+/**
+ * Analyze CPU profile for algorithmic complexity issues
+ * Detects likely O(n²), O(n³), or worse patterns
+ */
+export function analyzeComplexity(profile: CPUProfile): ComplexityIssue[] {
+  const issues: ComplexityIssue[] = [];
+  const hot = profile.getHotFunctions();
+
+  for (const func of hot) {
+    // Skip if not consuming significant time
+    if (func.selfPct < 5.0) continue;
+
+    const evidence: string[] = [];
+    let suspectedComplexity = "O(n)";
+    let severity: "critical" | "warning" | "info" = "info";
+
+    // Heuristic 1: Very high self time suggests nested loops
+    if (func.selfPct > 50) {
+      evidence.push(`Consumes ${func.selfPct.toFixed(1)}% of total CPU time`);
+      suspectedComplexity = "O(n²) or worse";
+      severity = "critical";
+    } else if (func.selfPct > 30) {
+      evidence.push(`Consumes ${func.selfPct.toFixed(1)}% of total CPU time`);
+      suspectedComplexity = "Possibly O(n²)";
+      severity = "warning";
+    }
+
+    // Heuristic 2: Function name suggests iteration
+    const funcName = func.functionName.toLowerCase();
+    const iterationKeywords = ["loop", "iterate", "each", "map", "filter", "reduce", "compare", "check"];
+    const matchedKeywords = iterationKeywords.filter(kw => funcName.includes(kw));
+
+    if (matchedKeywords.length > 0) {
+      evidence.push(`Function name suggests iteration: "${func.functionName}"`);
+    }
+
+    // Heuristic 3: Deep call stacks with loops often indicate nested iteration
+    if (func.totalPct > func.selfPct * 1.5) {
+      const childTime = func.totalPct - func.selfPct;
+      evidence.push(`Spends ${childTime.toFixed(1)}% in child functions (possible nested loops)`);
+    }
+
+    // Heuristic 4: Common O(n²) function names
+    const quadraticPatterns = [
+      "compare", "checksum", "validate", "match", "find",
+      "contains", "indexof", "search", "sort", "calc"
+    ];
+
+    for (const pattern of quadraticPatterns) {
+      if (funcName.includes(pattern) && func.selfPct > 20) {
+        evidence.push(`Function name "${func.functionName}" with high CPU suggests nested iteration`);
+        suspectedComplexity = "Likely O(n²)";
+        severity = "critical";
+        break;
+      }
+    }
+
+    if (evidence.length > 0) {
+      issues.push({
+        functionName: func.functionName,
+        url: func.url,
+        line: func.line,
+        selfTimePct: func.selfPct,
+        suspectedComplexity,
+        evidence,
+        severity,
+      });
+    }
+  }
+
+  return issues.sort((a, b) => b.selfTimePct - a.selfTimePct);
+}
+
+/**
+ * Pretty-print complexity analysis
+ */
+export function printComplexityAnalysis(issues: ComplexityIssue[]): void {
+  if (issues.length === 0) {
+    console.log("\n✅ No obvious complexity issues detected");
+    return;
+  }
+
+  console.log("\n" + "=".repeat(70));
+  console.log("ALGORITHMIC COMPLEXITY ANALYSIS");
+  console.log("=".repeat(70));
+
+  for (const issue of issues) {
+    const icon = issue.severity === "critical" ? "🔴" :
+                 issue.severity === "warning" ? "⚠️" : "ℹ️";
+
+    console.log(`\n${icon} ${issue.functionName}`);
+    console.log(`   Location: ${issue.url}:${issue.line}`);
+    console.log(`   CPU Time: ${issue.selfTimePct.toFixed(1)}%`);
+    console.log(`   Suspected: ${issue.suspectedComplexity}`);
+    console.log(`   Evidence:`);
+
+    for (const ev of issue.evidence) {
+      console.log(`     • ${ev}`);
+    }
+  }
+
+  console.log("\n" + "=".repeat(70));
+  console.log("RECOMMENDATIONS");
+  console.log("=".repeat(70));
+
+  const critical = issues.filter(i => i.severity === "critical");
+  if (critical.length > 0) {
+    console.log("\n🔴 Critical (investigate immediately):");
+    for (const issue of critical) {
+      console.log(`   • ${issue.functionName} - ${issue.suspectedComplexity}`);
+      console.log(`     ${issue.url}:${issue.line}`);
+    }
+  }
+
+  const warnings = issues.filter(i => i.severity === "warning");
+  if (warnings.length > 0) {
+    console.log("\n⚠️  Warnings (review for optimization):");
+    for (const issue of warnings) {
+      console.log(`   • ${issue.functionName} - ${issue.suspectedComplexity}`);
+    }
+  }
+
+  console.log("\nCommon O(n²) patterns to look for:");
+  console.log("  • Nested loops over the same data");
+  console.log("  • Array.indexOf/includes inside loops");
+  console.log("  • Repeated linear searches");
+  console.log("  • Comparing every item with every other item");
+  console.log("\nSolutions:");
+  console.log("  • Use Maps/Sets for O(1) lookup instead of arrays");
+  console.log("  • Cache results instead of recomputing");
+  console.log("  • Use more efficient algorithms (sort + binary search, etc.)");
+  console.log("  • Break down processing into smaller chunks");
+  console.log("=".repeat(70));
+}
+
+// ============================================================================
 // CLI Usage
 // ============================================================================
 
