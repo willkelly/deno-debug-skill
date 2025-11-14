@@ -11,12 +11,7 @@ This is the actual Claude skill that gets installed. Everything here is what use
 cp -r . ~/.claude/skills/deno-debugger/
 ```
 
-### 2. Install Python dependencies
-
-```bash
-cd ~/.claude/skills/deno-debugger/
-pip install -r requirements.txt
-```
+No additional dependencies are required - the skill uses pure Deno/TypeScript and all dependencies are managed by Deno.
 
 ## Quick Start
 
@@ -61,13 +56,17 @@ See the parent directory's README.md for full documentation and examples.
 ## Contents
 
 - `SKILL.md` - Instructions Claude reads
-- `scripts/` - Pre-written analysis tools
-  - `cdp_client.py` - Chrome DevTools Protocol client
-  - `heap_analyzer.py` - Heap snapshot analysis
-  - `cpu_profiler.py` - CPU profiling
-  - `breadcrumbs.py` - Investigation tracking
-  - `org_report.py` - Report generation (optional/legacy)
-- `requirements.txt` - Python dependencies
+- `scripts/` - Pre-written analysis tools (TypeScript/Deno)
+  - `cdp_client.ts` - Chrome DevTools Protocol client
+  - `heap_analyzer.ts` - Heap snapshot analysis
+  - `cpu_profiler.ts` - CPU profiling
+  - `breadcrumbs.ts` - Investigation tracking
+  - `report_gen.ts` - Report generation
+  - `concurrent_helper.ts` - Concurrent operations helper
+  - `types.ts` - TypeScript type definitions
+  - `deps.ts` - Dependency management
+- `deno.json` - Deno configuration and tasks
+- `deno.lock` - Deno dependency lock file
 
 ## For Developers
 
